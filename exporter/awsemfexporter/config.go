@@ -50,4 +50,6 @@ type Config struct {
 	NoVerifySSL bool `mapstructure:"no_verify_ssl"`
 	// MaxRetries is the maximum number of retries before abandoning an attempt to post data.
 	MaxRetries int `mapstructure:"max_retries"`
+	// MetricDeclarations is a list of rules to be used to set dimensions for exported metrics.
+	MetricDeclarations []MetricDeclaration `mapstructure:"metric_declarations"`
 }

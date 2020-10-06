@@ -52,6 +52,7 @@ func createDefaultConfig() configmodels.Exporter {
 		Region:                "",
 		ResourceARN:           "",
 		RoleARN:               "",
+		MetricDeclarations:    make([]MetricDeclaration, 0),
 	}
 }
 
