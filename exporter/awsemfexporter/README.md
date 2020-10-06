@@ -24,6 +24,14 @@ The following exporter configuration parameters are supported.
 | `role_arn`        | IAM role to upload segments to a different account.                    |         |
 | `max_retries`     | Maximum number of retries before abandoning an attempt to post data.   |    1    |
 | `dimension_rollup_option`| DimensionRollupOption is the option for metrics dimension rollup. Three options are available. |"ZeroAndSingleDimensionRollup" (Enable both zero dimension rollup and single dimension rollup)|
+| [`metric_declarations`](#metric_declaration) | List of rules for filtering exported metrics and their dimensions. |    [ ]   |
+
+### <metric_declaration>
+A metric_declaration section characterizes a rule to be used to set dimensions for exported metrics, filtered by the incoming metrics' metric names.
+| Name              | Description                                                            | Default |
+| :---------------- | :--------------------------------------------------------------------- | ------- |
+| `dimensions`      | List of dimension sets to be exported.                                 |  [[ ]]   |
+| `metric_name_selectors` | List of regex strings to filter metric names by.                 |   [ ]    |
 
 
 ## AWS Credential Configuration
