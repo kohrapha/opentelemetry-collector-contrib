@@ -57,5 +57,6 @@ func TestLoadConfig(t *testing.T) {
 			Region:                "us-west-2",
 			RoleARN:               "arn:aws:iam::123456789:role/monitoring-EKS-NodeInstanceRole",
 			DimensionRollupOption: "ZeroAndSingleDimensionRollup",
+			MetricDeclarations:    []*MetricDeclaration{},
 		})
 }
