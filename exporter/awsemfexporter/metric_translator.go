@@ -118,7 +118,7 @@ func (dps DoubleHistogramDataPointSlice) At(i int) DataPoint {
 
 // TranslateOtToCWMetric converts OT metrics to CloudWatch Metric format
 func TranslateOtToCWMetric(rm *pdata.ResourceMetrics, dimensionRollupOption string, namespace string) ([]*CWMetrics, int) {
-	var cwMetricLists []*CWMetrics
+	var cwMetricList []*CWMetrics
 	totalDroppedMetrics := 0
 
 	if len(namespace) == 0 && !rm.Resource().IsNil() {
@@ -156,11 +156,11 @@ func TranslateOtToCWMetric(rm *pdata.ResourceMetrics, dimensionRollupOption stri
 				totalDroppedMetrics++
 				continue
 			}
-			cwMetricList := getMeasurements(&metric, namespace, OTLib, dimensionRollupOption)
-			cwMetricLists = append(cwMetricLists, cwMetricList...)
+			cwMetrics := getCWMetrics(&metric, namespace, OTLib, dimensionRollupOption)
+			cwMetricList = append(cwMetricList, cwMetrics...)
 		}
 	}
-	return cwMetricLists, totalDroppedMetrics
+	return cwMetricList, totalDroppedMetrics
 }
 
 func TranslateCWMetricToEMF(cwMetricLists []*CWMetrics) []*LogEvent {
@@ -189,18 +189,19 @@ func TranslateCWMetricToEMF(cwMetricLists []*CWMetrics) []*LogEvent {
 	return ples
 }
 
-func getMeasurements(metric *pdata.Metric, namespace string, OTLib string, dimensionRollupOption string) []*CWMetrics {
+// Translates OTLP Metric to list of CW Metrics
+func getCWMetrics(metric *pdata.Metric, namespace string, OTLib string, dimensionRollupOption string) []*CWMetrics {
 	var result []*CWMetrics
 	var dps DataPoints
 
 	// metric measure data from OT
 	metricMeasure := make(map[string]string)
-	// metric measure slice could include multiple metric measures
-	metricSlice := []map[string]string{}
 	metricMeasure["Name"] = metric.Name()
 	metricMeasure["Unit"] = metric.Unit()
-	metricSlice = append(metricSlice, metricMeasure)
+	// metric measure slice could include multiple metric measures
+	metricSlice := []map[string]string{metricMeasure}
 
+	// Retrieve data points
 	switch metric.DataType() {
 	case pdata.MetricDataTypeIntGauge:
 		dps = IntDataPointSlice{metric.IntGauge().DataPoints()}

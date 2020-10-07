@@ -420,7 +420,7 @@ func TestTranslateCWMetricToEMF(t *testing.T) {
 	assert.Equal(t, readFromFile("testdata/testTranslateCWMetricToEMF.json"), *inputLogEvent[0].InputLogEvent.Message, "Expect to be equal")
 }
 
-func TestGetMeasurements(t *testing.T) {
+func TestGetCWMetrics(t *testing.T) {
 
 }
 
