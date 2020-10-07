@@ -20,7 +20,7 @@ type MetricDeclaration struct {
 	// List of dimension sets (which are lists of dimension names) to be included
 	// in exported metrics. If the metric does not contain any of the specified
 	// dimensions, the metric would be dropped (will only show up in logs).
-	Dimensions 			[][]string `mapstructure:"dimensions"`
+	Dimensions [][]string `mapstructure:"dimensions"`
 	// List of regex strings to be matched against metric names to determine which
 	// metrics should be included with this metric declaration rule.
 	MetricNameSelectors []string `mapstructure:"metric_name_selectors"`

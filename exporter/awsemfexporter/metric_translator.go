@@ -69,6 +69,47 @@ type CWMetricStats struct {
 	Sum   float64
 }
 
+// Wrapper interface for:
+// 	- pdata.IntDataPointSlice
+// 	- pdata.DoubleDataPointSlice
+// 	- pdata.IntHistogramDataPointSlice
+// 	- pdata.DoubleHistogramDataPointSlice
+type DataPoints interface {
+	Len() int
+	At(int) DataPoint
+}
+
+// Wrapper interface for:
+// 	- pdata.IntDataPoint
+// 	- pdata.DoubleDataPoint
+// 	- pdata.IntHistogramDataPoint
+// 	- pdata.DoubleHistogramDataPoint
+type DataPoint interface {
+	IsNil() bool
+	LabelsMap() pdata.StringMap
+}
+
+// Define wrapper interfaces such that At(i) returns a `DataPoint`
+type IntDataPointSlice struct {
+	pdata.IntDataPointSlice
+}
+type DoubleDataPointSlice struct {
+	pdata.DoubleDataPointSlice
+}
+type DoubleHistogramDataPointSlice struct {
+	pdata.DoubleHistogramDataPointSlice
+}
+
+func (dps IntDataPointSlice) At(i int) DataPoint {
+	return dps.IntDataPointSlice.At(i)
+}
+func (dps DoubleDataPointSlice) At(i int) DataPoint {
+	return dps.DoubleDataPointSlice.At(i)
+}
+func (dps DoubleHistogramDataPointSlice) At(i int) DataPoint {
+	return dps.DoubleHistogramDataPointSlice.At(i)
+}
+
 // TranslateOtToCWMetric converts OT metrics to CloudWatch Metric format
 func TranslateOtToCWMetric(rm *pdata.ResourceMetrics) ([]*CWMetrics, int) {
 	var cwMetricLists []*CWMetrics
@@ -141,6 +182,7 @@ func TranslateCWMetricToEMF(cwMetricLists []*CWMetrics) []*LogEvent {
 
 func getMeasurements(metric *pdata.Metric, namespace string, OTLib string) []*CWMetrics {
 	var result []*CWMetrics
+	var dps DataPoints
 
 	// metric measure data from OT
 	metricMeasure := make(map[string]string)
@@ -152,97 +194,41 @@ func getMeasurements(metric *pdata.Metric, namespace string, OTLib string) []*CW
 
 	switch metric.DataType() {
 	case pdata.MetricDataTypeIntGauge:
-		dps := metric.IntGauge().DataPoints()
-		if dps.Len() == 0 {
-			return result
-		}
-		for m := 0; m < dps.Len(); m++ {
-			dp := dps.At(m)
-			if dp.IsNil() {
-				continue
-			}
-			cwMetric := buildCWMetricFromDP(dp, metric, namespace, metricSlice, OTLib)
-			if cwMetric != nil {
-				result = append(result, cwMetric)
-			}
-		}
+		dps = IntDataPointSlice{metric.IntGauge().DataPoints()}
 	case pdata.MetricDataTypeDoubleGauge:
-		dps := metric.DoubleGauge().DataPoints()
-		if dps.Len() == 0 {
-			return result
-		}
-		for m := 0; m < dps.Len(); m++ {
-			dp := dps.At(m)
-			if dp.IsNil() {
-				continue
-			}
-			cwMetric := buildCWMetricFromDP(dp, metric, namespace, metricSlice, OTLib)
-			if cwMetric != nil {
-				result = append(result, cwMetric)
-			}
-		}
+		dps = DoubleDataPointSlice{metric.DoubleGauge().DataPoints()}
 	case pdata.MetricDataTypeIntSum:
-		dps := metric.IntSum().DataPoints()
-		if dps.Len() == 0 {
-			return result
-		}
-		for m := 0; m < dps.Len(); m++ {
-			dp := dps.At(m)
-			if dp.IsNil() {
-				continue
-			}
-			cwMetric := buildCWMetricFromDP(dp, metric, namespace, metricSlice, OTLib)
-			if cwMetric != nil {
-				result = append(result, cwMetric)
-			}
-		}
+		dps = IntDataPointSlice{metric.IntSum().DataPoints()}
 	case pdata.MetricDataTypeDoubleSum:
-		dps := metric.DoubleSum().DataPoints()
-		if dps.Len() == 0 {
-			return result
-		}
-		for m := 0; m < dps.Len(); m++ {
-			dp := dps.At(m)
-			if dp.IsNil() {
-				continue
-			}
-			cwMetric := buildCWMetricFromDP(dp, metric, namespace, metricSlice, OTLib)
-			if cwMetric != nil {
-				result = append(result, cwMetric)
-			}
-		}
+		dps = DoubleDataPointSlice{metric.DoubleSum().DataPoints()}
 	case pdata.MetricDataTypeDoubleHistogram:
-		dps := metric.DoubleHistogram().DataPoints()
-		if dps.Len() == 0 {
-			return result
+		dps = DoubleHistogramDataPointSlice{metric.DoubleHistogram().DataPoints()}
+	}
+
+	if dps.Len() == 0 {
+		return result
+	}
+	for m := 0; m < dps.Len(); m++ {
+		dp := dps.At(m)
+		if dp.IsNil() {
+			continue
 		}
-		for m := 0; m < dps.Len(); m++ {
-			dp := dps.At(m)
-			if dp.IsNil() {
-				continue
-			}
-			cwMetric := buildCWMetricFromHistogram(dp, metric, namespace, metricSlice, OTLib)
-			if cwMetric != nil {
-				result = append(result, cwMetric)
-			}
+	cwMetric := buildCWMetric(dp, metric, namespace, metricSlice, OTLib)
+		if cwMetric != nil {
+			result = append(result, cwMetric)
 		}
 	}
 	return result
 }
 
-func buildCWMetricFromDP(dp interface{}, pmd *pdata.Metric, namespace string, metricSlice []map[string]string, OTLib string) *CWMetrics {
+// Build CWMetric from DataPoint
+func buildCWMetric(dp DataPoint, pmd *pdata.Metric, namespace string, metricSlice []map[string]string, OTLib string) *CWMetrics {
 	// fields contains metric and dimensions key/value pairs
 	fieldsPairs := make(map[string]interface{})
 	var dimensionArray [][]string
 	// Dimensions Slice
 	var dimensionSlice []string
-	var dimensionKV pdata.StringMap
-	switch metric := dp.(type) {
-	case pdata.IntDataPoint:
-		dimensionKV = metric.LabelsMap()
-	case pdata.DoubleDataPoint:
-		dimensionKV = metric.LabelsMap()
-	}
+	dimensionKV := dp.LabelsMap()
 
 	dimensionKV.ForEach(func(k string, v pdata.StringValue) {
 		fieldsPairs[k] = v.Value()
@@ -253,6 +239,7 @@ func buildCWMetricFromDP(dp interface{}, pmd *pdata.Metric, namespace string, me
 	dimensionArray = append(dimensionArray, append(dimensionSlice, OtlibDimensionKey))
 
 	timestamp := time.Now().UnixNano() / int64(time.Millisecond)
+
 	var metricVal interface{}
 	switch metric := dp.(type) {
 	case pdata.IntDataPoint:
@@ -261,64 +248,19 @@ func buildCWMetricFromDP(dp interface{}, pmd *pdata.Metric, namespace string, me
 	case pdata.DoubleDataPoint:
 		fieldsPairs[pmd.Name()] = metric.Value()
 		metricVal = calculateRate(fieldsPairs, metric.Value(), timestamp)
+	case pdata.DoubleHistogramDataPoint:
+		bucketBounds := metric.ExplicitBounds()
+		metricVal = &CWMetricStats{
+			Min:   bucketBounds[0],
+			Max:   bucketBounds[len(bucketBounds)-1],
+			Count: metric.Count(),
+			Sum:   metric.Sum(),
+		}
 	}
 	if metricVal == nil {
 		return nil
 	}
 	fieldsPairs[pmd.Name()] = metricVal
-
-	// EMF dimension attr takes list of list on dimensions. Including single/zero dimension rollup
-	//"Zero" dimension rollup
-	dimensionZero := []string{OtlibDimensionKey}
-	if len(dimensionSlice) > 0 {
-		dimensionArray = append(dimensionArray, dimensionZero)
-	}
-	//"One" dimension rollup
-	for _, dimensionKey := range dimensionSlice {
-		dimensionArray = append(dimensionArray, append(dimensionZero, dimensionKey))
-	}
-
-	cwMeasurement := &CwMeasurement{
-		Namespace:  namespace,
-		Dimensions: dimensionArray,
-		Metrics:    metricSlice,
-	}
-	metricList := make([]CwMeasurement, 1)
-	metricList[0] = *cwMeasurement
-	cwMetric := &CWMetrics{
-		Measurements: metricList,
-		Timestamp:    timestamp,
-		Fields:       fieldsPairs,
-	}
-	return cwMetric
-}
-
-func buildCWMetricFromHistogram(metric pdata.DoubleHistogramDataPoint, pmd *pdata.Metric, namespace string, metricSlice []map[string]string, OTLib string) *CWMetrics {
-	// fields contains metric and dimensions key/value pairs
-	fieldsPairs := make(map[string]interface{})
-	var dimensionArray [][]string
-	// Dimensions Slice
-	var dimensionSlice []string
-	dimensionKV := metric.LabelsMap()
-
-	dimensionKV.ForEach(func(k string, v pdata.StringValue) {
-		fieldsPairs[k] = v.Value()
-		dimensionSlice = append(dimensionSlice, k)
-	})
-	// add OTLib as an additional dimension
-	fieldsPairs[OtlibDimensionKey] = OTLib
-	dimensionArray = append(dimensionArray, append(dimensionSlice, OtlibDimensionKey))
-
-	timestamp := time.Now().UnixNano() / int64(time.Millisecond)
-
-	bucketBounds := metric.ExplicitBounds()
-	metricStats := &CWMetricStats{
-		Min:   bucketBounds[0],
-		Max:   bucketBounds[len(bucketBounds)-1],
-		Count: metric.Count(),
-		Sum:   metric.Sum(),
-	}
-	fieldsPairs[pmd.Name()] = metricStats
 
 	// EMF dimension attr takes list of list on dimensions. Including single/zero dimension rollup
 	//"Zero" dimension rollup
