@@ -14,6 +14,8 @@
 
 package awsemfexporter
 
+import "go.opentelemetry.io/collector/consumer/pdata"
+
 // Characterizes a rule to be used to set dimensions for certain incoming metrics,
 // filtered by their metric names. 
 type MetricDeclaration struct {
@@ -26,4 +28,23 @@ type MetricDeclaration struct {
 	MetricNameSelectors []string `mapstructure:"metric_name_selectors"`
 }
 
+// Returns true if the given OTLP Metric's name matches any of the Metric Declaration's
+// metric name selectors.
+func (md *MetricDeclaration) Matches(metric *pdata.Metric) bool {
+	for _, name := range md.MetricNameSelectors {
+		if name == metric.Name() {
+			return true
+		}
+	}
+	return false
+}
 
+// Retrieve a filtered list of metric declarations that matches the given metric name.
+func filterMetricDeclarations(mds []MetricDeclaration, metric *pdata.Metric) (filtered []MetricDeclaration) {
+	for _, md := range mds {
+		if md.Matches(metric) {
+			filtered = append(filtered, md)
+		}
+	}
+	return
+}
