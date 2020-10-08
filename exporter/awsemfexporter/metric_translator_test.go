@@ -31,6 +31,7 @@ import (
 	"go.opentelemetry.io/collector/consumer/pdata"
 	"go.opentelemetry.io/collector/translator/conventions"
 	"go.opentelemetry.io/collector/translator/internaldata"
+	"go.uber.org/zap"
 )
 
 func TestTranslateOtToCWMetric(t *testing.T) {
@@ -262,8 +263,24 @@ func TestTranslateOtToCWMetric(t *testing.T) {
 			},
 		},
 	}
+	config := &Config{
+		Namespace: "",
+		DimensionRollupOption: ZeroAndSingleDimensionRollup,
+		MetricDeclarations: []MetricDeclaration{
+			{
+				MetricNameSelectors: []string{
+					"spanCounter",
+					"spanGaugeCounter",
+					"spanDoubleCounter",
+					"spanGaugeDoubleCounter",
+					"spanTimer",
+				},
+			},
+		},
+	}
+	logger := zap.NewNop()
 	rm := internaldata.OCToMetrics(md).ResourceMetrics().At(0)
-	cwm, totalDroppedMetrics := TranslateOtToCWMetric(&rm, ZeroAndSingleDimensionRollup, "")
+	cwm, totalDroppedMetrics := TranslateOtToCWMetric(&rm, config, logger)
 	assert.Equal(t, 1, totalDroppedMetrics)
 	assert.NotNil(t, cwm)
 	assert.Equal(t, 5, len(cwm))
@@ -295,8 +312,14 @@ func TestTranslateOtToCWMetricWithNameSpace(t *testing.T) {
 		},
 		Metrics: []*metricspb.Metric{},
 	}
+	config := &Config{
+		Namespace: "",
+		DimensionRollupOption: ZeroAndSingleDimensionRollup,
+		MetricDeclarations: []MetricDeclaration{},
+	}
+	logger := zap.NewNop()
 	rm := internaldata.OCToMetrics(md).ResourceMetrics().At(0)
-	cwm, totalDroppedMetrics := TranslateOtToCWMetric(&rm, ZeroAndSingleDimensionRollup, "")
+	cwm, totalDroppedMetrics := TranslateOtToCWMetric(&rm, config, logger)
 	assert.Equal(t, 0, totalDroppedMetrics)
 	assert.Nil(t, cwm)
 	assert.Equal(t, 0, len(cwm))
@@ -387,14 +410,253 @@ func TestTranslateOtToCWMetricWithNameSpace(t *testing.T) {
 			},
 		},
 	}
+	config.MetricDeclarations = []MetricDeclaration{
+		{
+			MetricNameSelectors: []string{
+				"spanCounter",
+				"spanGaugeCounter",
+				"spanDoubleCounter",
+				"spanGaugeDoubleCounter",
+			},
+		},
+	}
 	rm = internaldata.OCToMetrics(md).ResourceMetrics().At(0)
-	cwm, totalDroppedMetrics = TranslateOtToCWMetric(&rm, ZeroAndSingleDimensionRollup, "")
+	cwm, totalDroppedMetrics = TranslateOtToCWMetric(&rm, config, logger)
 	assert.Equal(t, 0, totalDroppedMetrics)
 	assert.NotNil(t, cwm)
 	assert.Equal(t, 1, len(cwm))
 
 	met := cwm[0]
 	assert.Equal(t, "myServiceNS", met.Measurements[0].Namespace)
+}
+
+func TestTranslateOtToCWMetricWithFiltering(t *testing.T) {
+	md := consumerdata.MetricsData{
+		Node: &commonpb.Node{
+			LibraryInfo: &commonpb.LibraryInfo{ExporterVersion: "SomeVersion"},
+		},
+		Resource: &resourcepb.Resource{
+			Labels: map[string]string{
+				conventions.AttributeServiceName:      "myServiceName",
+				conventions.AttributeServiceNamespace: "myServiceNS",
+			},
+		},
+		Metrics: []*metricspb.Metric{
+			{
+				MetricDescriptor: &metricspb.MetricDescriptor{
+					Name:        "spanCounter",
+					Description: "Counting all the spans",
+					Unit:        "Count",
+					Type:        metricspb.MetricDescriptor_CUMULATIVE_INT64,
+					LabelKeys: []*metricspb.LabelKey{
+						{Key: "spanName"},
+						{Key: "isItAnError"},
+					},
+				},
+				Timeseries: []*metricspb.TimeSeries{
+					{
+						LabelValues: []*metricspb.LabelValue{
+							{Value: "testSpan", HasValue: true},
+							{Value: "false", HasValue: true},
+						},
+						Points: []*metricspb.Point{
+							{
+								Timestamp: &timestamp.Timestamp{
+									Seconds: 100,
+								},
+								Value: &metricspb.Point_Int64Value{
+									Int64Value: 1,
+								},
+							},
+						},
+					},
+				},
+			},
+			{
+				MetricDescriptor: &metricspb.MetricDescriptor{
+					Name:        "spanGaugeCounter",
+					Description: "Counting all the spans",
+					Unit:        "Count",
+					Type:        metricspb.MetricDescriptor_GAUGE_INT64,
+					LabelKeys: []*metricspb.LabelKey{
+						{Key: "spanName"},
+						{Key: "isItAnError"},
+					},
+				},
+				Timeseries: []*metricspb.TimeSeries{
+					{
+						LabelValues: []*metricspb.LabelValue{
+							{Value: "testSpan", HasValue: true},
+							{Value: "false", HasValue: true},
+						},
+						Points: []*metricspb.Point{
+							{
+								Timestamp: &timestamp.Timestamp{
+									Seconds: 100,
+								},
+								Value: &metricspb.Point_Int64Value{
+									Int64Value: 1,
+								},
+							},
+						},
+					},
+				},
+			},
+			{
+				MetricDescriptor: &metricspb.MetricDescriptor{
+					Name:        "spanDoubleCounter",
+					Description: "Counting all the spans",
+					Unit:        "Count",
+					Type:        metricspb.MetricDescriptor_CUMULATIVE_DOUBLE,
+					LabelKeys: []*metricspb.LabelKey{
+						{Key: "spanName"},
+						{Key: "isItAnError"},
+					},
+				},
+				Timeseries: []*metricspb.TimeSeries{
+					{
+						LabelValues: []*metricspb.LabelValue{
+							{Value: "testSpan", HasValue: true},
+							{Value: "false", HasValue: true},
+						},
+						Points: []*metricspb.Point{
+							{
+								Timestamp: &timestamp.Timestamp{
+									Seconds: 100,
+								},
+								Value: &metricspb.Point_DoubleValue{
+									DoubleValue: 0.1,
+								},
+							},
+						},
+					},
+				},
+			},
+			{
+				MetricDescriptor: &metricspb.MetricDescriptor{
+					Name:        "spanGaugeDoubleCounter",
+					Description: "Counting all the spans",
+					Unit:        "Count",
+					Type:        metricspb.MetricDescriptor_GAUGE_DOUBLE,
+					LabelKeys: []*metricspb.LabelKey{
+						{Key: "spanName"},
+						{Key: "isItAnError"},
+					},
+				},
+				Timeseries: []*metricspb.TimeSeries{
+					{
+						LabelValues: []*metricspb.LabelValue{
+							{Value: "testSpan", HasValue: true},
+							{Value: "false", HasValue: true},
+						},
+						Points: []*metricspb.Point{
+							{
+								Timestamp: &timestamp.Timestamp{
+									Seconds: 100,
+								},
+								Value: &metricspb.Point_DoubleValue{
+									DoubleValue: 0.1,
+								},
+							},
+						},
+					},
+				},
+			},
+			{
+				MetricDescriptor: &metricspb.MetricDescriptor{
+					Name:        "spanTimer",
+					Description: "How long the spans take",
+					Unit:        "Seconds",
+					Type:        metricspb.MetricDescriptor_CUMULATIVE_DISTRIBUTION,
+					LabelKeys: []*metricspb.LabelKey{
+						{Key: "spanName"},
+					},
+				},
+				Timeseries: []*metricspb.TimeSeries{
+					{
+						LabelValues: []*metricspb.LabelValue{
+							{Value: "testSpan", HasValue: true},
+						},
+						Points: []*metricspb.Point{
+							{
+								Timestamp: &timestamp.Timestamp{
+									Seconds: 100,
+								},
+								Value: &metricspb.Point_DistributionValue{
+									DistributionValue: &metricspb.DistributionValue{
+										Sum:   15.0,
+										Count: 5,
+										BucketOptions: &metricspb.DistributionValue_BucketOptions{
+											Type: &metricspb.DistributionValue_BucketOptions_Explicit_{
+												Explicit: &metricspb.DistributionValue_BucketOptions_Explicit{
+													Bounds: []float64{0, 10},
+												},
+											},
+										},
+										Buckets: []*metricspb.DistributionValue_Bucket{
+											{
+												Count: 0,
+											},
+											{
+												Count: 4,
+											},
+											{
+												Count: 1,
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	logger := zap.NewNop()
+	rm := internaldata.OCToMetrics(md).ResourceMetrics().At(0)
+
+	testCases := []struct {
+		testName            string
+		metricNameSelectors []string
+		numMetrics          int
+	}{
+		{
+			"No filtering",
+			[]string{"spanCounter", "spanGaugeCounter", "spanDoubleCounter", "spanGaugeDoubleCounter"},
+			4,
+		},
+		{
+			"Only double counters",
+			[]string{"spanDoubleCounter", "spanGaugeDoubleCounter"},
+			2,
+		},
+		{
+			"Remove all",
+			[]string{},
+			0,
+		},
+	}
+
+	for _, tc := range testCases {
+		config := &Config{
+			Namespace: "",
+			DimensionRollupOption: ZeroAndSingleDimensionRollup,
+			MetricDeclarations: []MetricDeclaration{
+				{MetricNameSelectors: tc.metricNameSelectors},
+			},
+		}
+		t.Run(tc.testName, func(t *testing.T) {
+			cwm, totalDroppedMetrics := TranslateOtToCWMetric(&rm, config, logger)
+			assert.Equal(t, 0, totalDroppedMetrics)
+			assert.Equal(t, tc.numMetrics, len(cwm))
+			if tc.numMetrics > 0 {
+				assert.NotNil(t, cwm)
+				assert.Equal(t, 1, len(cwm[0].Measurements))
+			}
+		})
+	}
 }
 
 func TestTranslateCWMetricToEMF(t *testing.T) {
