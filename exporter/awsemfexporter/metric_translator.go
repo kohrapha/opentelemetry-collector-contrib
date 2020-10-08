@@ -24,6 +24,7 @@ import (
 
 	"go.opentelemetry.io/collector/consumer/pdata"
 	"go.opentelemetry.io/collector/translator/conventions"
+	"go.uber.org/zap"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/awsemfexporter/mapwithexpiry"
 )
@@ -118,9 +119,12 @@ func (dps DoubleHistogramDataPointSlice) At(i int) DataPoint {
 }
 
 // TranslateOtToCWMetric converts OT metrics to CloudWatch Metric format
-func TranslateOtToCWMetric(rm *pdata.ResourceMetrics, dimensionRollupOption string, namespace string) ([]*CWMetrics, int) {
+func TranslateOtToCWMetric(rm *pdata.ResourceMetrics, config *Config, logger *zap.Logger) ([]*CWMetrics, int) {
 	var cwMetricList []*CWMetrics
 	totalDroppedMetrics := 0
+	dimensionRollupOption := config.DimensionRollupOption
+	namespace := config.Namespace
+	mds := config.MetricDeclarations
 	var instrumentationLibName string
 
 	if len(namespace) == 0 && !rm.Resource().IsNil() {
@@ -156,6 +160,11 @@ func TranslateOtToCWMetric(rm *pdata.ResourceMetrics, dimensionRollupOption stri
 			metric := metrics.At(k)
 			if metric.IsNil() {
 				totalDroppedMetrics++
+				continue
+			}
+			filteredMDs := filterMetricDeclarations(mds, &metric)
+			if len(filteredMDs) == 0 {
+				logger.Warn("Dropped metric due to no matching metric declaration", zap.String("metricName", metric.Name()))
 				continue
 			}
 			cwMetrics := getCWMetrics(&metric, namespace, instrumentationLibName, dimensionRollupOption)
