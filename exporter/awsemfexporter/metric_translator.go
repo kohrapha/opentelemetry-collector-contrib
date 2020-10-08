@@ -233,33 +233,26 @@ func getCWMetrics(metric *pdata.Metric, namespace string, OTLib string, dimensio
 
 // Build CWMetric from DataPoint
 func buildCWMetric(dp DataPoint, pmd *pdata.Metric, namespace string, metricSlice []map[string]string, OTLib string, dimensionRollupOption string) *CWMetrics {
-	// fields contains metric and dimensions key/value pairs
-	fieldsPairs := make(map[string]interface{})
-	var dimensionArray [][]string
-	// Dimensions Slice
-	var dimensionSlice []string
-	dimensionKV := dp.LabelsMap()
-
-	dimensionKV.ForEach(func(k string, v pdata.StringValue) {
-		fieldsPairs[k] = v.Value()
-		dimensionSlice = append(dimensionSlice, k)
-	})
-	// add OTLib as an additional dimension
-	fieldsPairs[OtlibDimensionKey] = OTLib
-	dimensionArray = append(dimensionArray, append(dimensionSlice, OtlibDimensionKey))
-
+	dimensions, fields := createDimensions(dp, OTLib, dimensionRollupOption)
+	cwMeasurement := &CwMeasurement{
+		Namespace:  namespace,
+		Dimensions: dimensions,
+		Metrics:    metricSlice,
+	}
+	metricList := []CwMeasurement{*cwMeasurement}
 	timestamp := time.Now().UnixNano() / int64(time.Millisecond)
 
+	// Extract metric
 	var metricVal interface{}
 	switch metric := dp.(type) {
 	case pdata.IntDataPoint:
-		// Put a fake but identical metric value here in order to add metric name into fieldsPairs
+		// Put a fake but identical metric value here in order to add metric name into fields
 		// since calculateRate() needs metric name as one of metric identifiers
-		fieldsPairs[pmd.Name()] = int64(FakeMetricValue)
-		metricVal = calculateRate(fieldsPairs, metric.Value(), timestamp)
+		fields[pmd.Name()] = int64(FakeMetricValue)
+		metricVal = calculateRate(fields, metric.Value(), timestamp)
 	case pdata.DoubleDataPoint:
-		fieldsPairs[pmd.Name()] = float64(FakeMetricValue)
-		metricVal = calculateRate(fieldsPairs, metric.Value(), timestamp)
+		fields[pmd.Name()] = float64(FakeMetricValue)
+		metricVal = calculateRate(fields, metric.Value(), timestamp)
 	case pdata.DoubleHistogramDataPoint:
 		bucketBounds := metric.ExplicitBounds()
 		metricVal = &CWMetricStats{
@@ -272,27 +265,42 @@ func buildCWMetric(dp DataPoint, pmd *pdata.Metric, namespace string, metricSlic
 	if metricVal == nil {
 		return nil
 	}
-	fieldsPairs[pmd.Name()] = metricVal
+	fields[pmd.Name()] = metricVal
+
+	cwMetric := &CWMetrics{
+		Measurements: metricList,
+		Timestamp:    timestamp,
+		Fields:       fields,
+	}
+	return cwMetric
+}
+
+// Create dimensions from DataPoint labels, where dimensions is a 2D array of dimension names,
+// and initialize fields with dimension key/value pairs
+func createDimensions(dp DataPoint, OTLib string, dimensionRollupOption string) (dimensions [][]string, fields map[string]interface{}) {
+	// fields contains metric and dimensions key/value pairs
+	fields = make(map[string]interface{})
+	dimensionKV := dp.LabelsMap()
+
+	dimensionSlice := make([]string, dimensionKV.Len(), dimensionKV.Len()+1)
+	idx := 0
+	dimensionKV.ForEach(func(k string, v pdata.StringValue) {
+		fields[k] = v.Value()
+		dimensionSlice[idx] = k
+		idx++
+	})
+
+	// Add OTLib as an additional dimension
+	fields[OtlibDimensionKey] = OTLib
+	dimensions = append(dimensions, append(dimensionSlice, OtlibDimensionKey))
 
 	// EMF dimension attr takes list of list on dimensions. Including single/zero dimension rollup
 	rollupDimensionArray := dimensionRollup(dimensionRollupOption, dimensionSlice)
 	if len(rollupDimensionArray) > 0 {
-		dimensionArray = append(dimensionArray, rollupDimensionArray...)
+		dimensions = append(dimensions, rollupDimensionArray...)
 	}
 
-	cwMeasurement := &CwMeasurement{
-		Namespace:  namespace,
-		Dimensions: dimensionArray,
-		Metrics:    metricSlice,
-	}
-	metricList := make([]CwMeasurement, 1)
-	metricList[0] = *cwMeasurement
-	cwMetric := &CWMetrics{
-		Measurements: metricList,
-		Timestamp:    timestamp,
-		Fields:       fieldsPairs,
-	}
-	return cwMetric
+	return
 }
 
 // rate is calculated by valDelta / timeDelta

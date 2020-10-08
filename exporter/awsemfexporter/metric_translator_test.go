@@ -17,6 +17,7 @@ package awsemfexporter
 import (
 	"io/ioutil"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -27,6 +28,7 @@ import (
 	"github.com/golang/protobuf/ptypes/wrappers"
 	"github.com/stretchr/testify/assert"
 	"go.opentelemetry.io/collector/consumer/consumerdata"
+	"go.opentelemetry.io/collector/consumer/pdata"
 	"go.opentelemetry.io/collector/translator/conventions"
 	"go.opentelemetry.io/collector/translator/internaldata"
 )
@@ -421,6 +423,74 @@ func TestTranslateCWMetricToEMF(t *testing.T) {
 }
 
 func TestGetCWMetrics(t *testing.T) {
+
+}
+
+func TestCreateDimensions(t *testing.T) {
+	OTLib := "OTLib"
+	testCases := []struct {
+		testName string
+		labels   map[string]string
+		dims     [][]string
+	}{
+		{
+			"single label",
+			map[string]string{"a": "foo"},
+			[][]string{
+				{"a", OTLib},
+				{OTLib},
+				{OTLib, "a"},
+			},
+		},
+		{
+			"multiple labels",
+			map[string]string{"a": "foo", "b": "bar"},
+			[][]string{
+				{"a", "b", OTLib},
+				{OTLib},
+				{OTLib, "a"},
+				{OTLib, "b"},
+			},
+		},
+		{
+			"no labels",
+			map[string]string{},
+			[][]string{
+				{OTLib},
+			},
+		},
+	}
+
+	sliceSorter := func(slice [][]string) func(a, b int) bool {
+		stringified := make([]string, len(slice))
+		for i, v := range slice {
+			stringified[i] = strings.Join(v, ",")
+		}
+		return func(i, j int) bool {
+			return stringified[i] > stringified[j]
+		}
+	}
+
+	for _, tc := range testCases {
+		dp := pdata.NewIntDataPoint()
+		dp.InitEmpty()
+		dp.LabelsMap().InitFromMap(tc.labels)
+		dimensions, fields := createDimensions(dp, OTLib, ZeroAndSingleDimensionRollup)
+
+		// Sort slice for equality check
+		sort.Slice(tc.dims, sliceSorter(tc.dims))
+		sort.Slice(dimensions, sliceSorter(dimensions))
+
+		assert.Equal(t, tc.dims, dimensions)
+
+		expectedFields := make(map[string]interface{})
+		for k, v := range tc.labels {
+			expectedFields[k] = v
+		}
+		expectedFields[OtlibDimensionKey] = OTLib
+
+		assert.Equal(t, expectedFields, fields)
+	}
 
 }
 
