@@ -278,9 +278,8 @@ func TestTranslateOtToCWMetric(t *testing.T) {
 			},
 		},
 	}
-	logger := zap.NewNop()
 	rm := internaldata.OCToMetrics(md).ResourceMetrics().At(0)
-	cwm, totalDroppedMetrics := TranslateOtToCWMetric(&rm, config, logger)
+	cwm, totalDroppedMetrics := TranslateOtToCWMetric(&rm, config)
 	assert.Equal(t, 1, totalDroppedMetrics)
 	assert.NotNil(t, cwm)
 	assert.Equal(t, 5, len(cwm))
@@ -317,9 +316,8 @@ func TestTranslateOtToCWMetricWithNameSpace(t *testing.T) {
 		DimensionRollupOption: ZeroAndSingleDimensionRollup,
 		MetricDeclarations: []MetricDeclaration{},
 	}
-	logger := zap.NewNop()
 	rm := internaldata.OCToMetrics(md).ResourceMetrics().At(0)
-	cwm, totalDroppedMetrics := TranslateOtToCWMetric(&rm, config, logger)
+	cwm, totalDroppedMetrics := TranslateOtToCWMetric(&rm, config)
 	assert.Equal(t, 0, totalDroppedMetrics)
 	assert.Nil(t, cwm)
 	assert.Equal(t, 0, len(cwm))
@@ -421,7 +419,7 @@ func TestTranslateOtToCWMetricWithNameSpace(t *testing.T) {
 		},
 	}
 	rm = internaldata.OCToMetrics(md).ResourceMetrics().At(0)
-	cwm, totalDroppedMetrics = TranslateOtToCWMetric(&rm, config, logger)
+	cwm, totalDroppedMetrics = TranslateOtToCWMetric(&rm, config)
 	assert.Equal(t, 0, totalDroppedMetrics)
 	assert.NotNil(t, cwm)
 	assert.Equal(t, 1, len(cwm))
@@ -614,7 +612,6 @@ func TestTranslateOtToCWMetricWithFiltering(t *testing.T) {
 		},
 	}
 
-	logger := zap.NewNop()
 	rm := internaldata.OCToMetrics(md).ResourceMetrics().At(0)
 
 	testCases := []struct {
@@ -648,7 +645,7 @@ func TestTranslateOtToCWMetricWithFiltering(t *testing.T) {
 			},
 		}
 		t.Run(tc.testName, func(t *testing.T) {
-			cwm, totalDroppedMetrics := TranslateOtToCWMetric(&rm, config, logger)
+			cwm, totalDroppedMetrics := TranslateOtToCWMetric(&rm, config)
 			assert.Equal(t, 0, totalDroppedMetrics)
 			assert.Equal(t, tc.numMetrics, len(cwm))
 			if tc.numMetrics > 0 {
@@ -679,7 +676,8 @@ func TestTranslateCWMetricToEMF(t *testing.T) {
 		Fields:       fields,
 		Measurements: []CwMeasurement{cwMeasurement},
 	}
-	inputLogEvent := TranslateCWMetricToEMF([]*CWMetrics{met})
+	logger := zap.NewNop()
+	inputLogEvent := TranslateCWMetricToEMF([]*CWMetrics{met}, logger)
 
 	assert.Equal(t, readFromFile("testdata/testTranslateCWMetricToEMF.json"), *inputLogEvent[0].InputLogEvent.Message, "Expect to be equal")
 }

@@ -180,7 +180,7 @@ func generateLogEventFromMetric(metric pdata.Metrics, config *Config, logger *za
 		if rm.IsNil() {
 			continue
 		}
-		cwm, totalDroppedMetrics = TranslateOtToCWMetric(&rm, config, logger)
+		cwm, totalDroppedMetrics = TranslateOtToCWMetric(&rm, config)
 		if len(cwm) > 0 && len(cwm[0].Measurements) > 0 {
 			namespace = cwm[0].Measurements[0].Namespace
 		}
@@ -188,7 +188,7 @@ func generateLogEventFromMetric(metric pdata.Metrics, config *Config, logger *za
 		cwMetricLists = append(cwMetricLists, cwm...)
 	}
 
-	return TranslateCWMetricToEMF(cwMetricLists), totalDroppedMetrics, namespace
+	return TranslateCWMetricToEMF(cwMetricLists, logger), totalDroppedMetrics, namespace
 }
 
 func wrapErrorIfBadRequest(err *error) error {
