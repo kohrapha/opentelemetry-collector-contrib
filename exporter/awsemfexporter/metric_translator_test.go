@@ -35,15 +35,17 @@ import (
 	"go.uber.org/zap/zaptest/observer"
 )
 
-// Asserts whether dimension sets are equal (i.e. has same sets of ordered dimensions)
+// Asserts whether dimension sets are equal (i.e. has same sets of dimensions)
 func assertDimsEqual(t *testing.T, dims1, dims2 [][]string) {
 	// Convert to string for easier sorting
 	stringified1 := make([]string, len(dims1))
 	stringified2 := make([]string, len(dims2))
 	for i, v := range dims1 {
+		sort.Strings(v)
 		stringified1[i] = strings.Join(v, ",")
 	}
 	for i, v := range dims2 {
+		sort.Strings(v)
 		stringified2[i] = strings.Join(v, ",")
 	}
 	// Sort across dimension sets for equality checking
@@ -503,7 +505,7 @@ func TestTranslateOtToCWMetricWithFiltering(t *testing.T) {
 			[]string{"spanCounter"},
 			[][]string{
 				{"spanName", "isItAnError", "OTLib"},
-				{"OTLib", "spanName"},
+				{"spanName", "OTLib"},
 				{"OTLib", "isItAnError"},
 				{"OTLib"},
 			},
