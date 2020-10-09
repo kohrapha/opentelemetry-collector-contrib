@@ -171,9 +171,19 @@ func TranslateCWMetricToEMF(cwMetricLists []*CWMetrics, logger *zap.Logger) []*L
 	for _, met := range cwMetricLists {
 		cwmMap := make(map[string]interface{})
 		fieldMap := met.Fields
-		cwmMap["CloudWatchMetrics"] = met.Measurements
-		cwmMap["Timestamp"] = met.Timestamp
-		fieldMap["_aws"] = cwmMap
+
+		if len(met.Measurements) > 0 {
+			measurement := met.Measurements[0]
+			// Create `_aws` section if there are dimensions defined
+			if len(measurement.Dimensions) > 0 {
+				cwmMap["CloudWatchMetrics"] = met.Measurements
+				cwmMap["Timestamp"] = met.Timestamp
+				fieldMap["_aws"] = cwmMap
+			} else {
+				metricName := measurement.Metrics[0]["Name"]
+				logger.Warn("Dropped metric due to no matching metric declaration", zap.String("metricName", metricName))
+			}
+		}
 
 		pleMsg, err := json.Marshal(fieldMap)
 		if err != nil {
