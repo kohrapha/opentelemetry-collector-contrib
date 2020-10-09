@@ -248,14 +248,21 @@ func getCWMetrics(metric *pdata.Metric, namespace string, instrumentationLibName
 // Build CWMetric from DataPoint
 func buildCWMetric(dp DataPoint, pmd *pdata.Metric, namespace string, metricSlice []map[string]string, instrumentationLibName string, config *Config) *CWMetrics {
 	dimensionRollupOption := config.DimensionRollupOption
+	mds := config.MetricDeclarations
 
-	dimensions, fields := createDimensions(dp, instrumentationLibName, dimensionRollupOption)
-	cwMeasurement := &CwMeasurement{
-		Namespace:  namespace,
-		Dimensions: dimensions,
-		Metrics:    metricSlice,
-	}
-	metricList := []CwMeasurement{*cwMeasurement}
+	labelsMap := dp.LabelsMap()
+	// `fields` contains metric and dimensions key/value pairs
+	fields := make(map[string]interface{}, labelsMap.Len()+2)
+	labelsMap.ForEach(func(k string, v string) {
+		fields[k] = v
+	})
+
+	// Create dimensions from metric declarations
+	dimensions := createDimensions(mds, fields, dimensionRollupOption, instrumentationLibName)
+
+	// Add instrumentation library name as a dimension field
+	fields[OTellibDimensionKey] = instrumentationLibName
+
 	timestamp := time.Now().UnixNano() / int64(time.Millisecond)
 
 	// Extract metric
@@ -289,6 +296,12 @@ func buildCWMetric(dp DataPoint, pmd *pdata.Metric, namespace string, metricSlic
 	}
 	fields[pmd.Name()] = metricVal
 
+	cwMeasurement := &CwMeasurement{
+		Namespace:  namespace,
+		Dimensions: dimensions,
+		Metrics:    metricSlice,
+	}
+	metricList := []CwMeasurement{*cwMeasurement}
 	cwMetric := &CWMetrics{
 		Measurements: metricList,
 		Timestamp:    timestamp,
@@ -297,27 +310,21 @@ func buildCWMetric(dp DataPoint, pmd *pdata.Metric, namespace string, metricSlic
 	return cwMetric
 }
 
-// Create dimensions from DataPoint labels, where dimensions is a 2D array of dimension names,
-// and initialize fields with dimension key/value pairs
-func createDimensions(dp DataPoint, instrumentationLibName string, dimensionRollupOption string) (dimensions [][]string, fields map[string]interface{}) {
-	// fields contains metric and dimensions key/value pairs
-	fields = make(map[string]interface{})
-	dimensionKV := dp.LabelsMap()
-
-	dimensionSlice := make([]string, dimensionKV.Len(), dimensionKV.Len()+1)
-	idx := 0
-	dimensionKV.ForEach(func(k string, v string) {
-		fields[k] = v
-		dimensionSlice[idx] = k
-		idx++
-	})
-	// Add OTel instrumentation lib name as an additional dimension if it is defined
-	if instrumentationLibName != noInstrumentationLibraryName {
-		fields[OTellibDimensionKey] = instrumentationLibName
-		dimensions = append(dimensions, append(dimensionSlice, OTellibDimensionKey))
-	} else {
-		dimensions = append(dimensions, dimensionSlice)
+// Create dimensions from DataPoint labels, where dimensions is a 2D array of dimension names.
+func createDimensions(mds []MetricDeclaration, labels map[string]interface{}, dimensionRollupOption string, instrumentationLibName string) (dimensions [][]string) {
+	if len(mds) == 0 {
+		return
 	}
+
+	dimensionSlice := make([]string, len(labels), len(labels)+1)
+	idx := 0
+	for label := range labels {
+		dimensionSlice[idx] = label
+		idx++
+	}
+
+	// Add instrumentationLibName as an additional dimension
+	dimensions = append(dimensions, append(dimensionSlice, OTellibDimensionKey))
 
 	// EMF dimension attr takes list of list on dimensions. Including single/zero dimension rollup
 	rollupDimensionArray := dimensionRollup(dimensionRollupOption, dimensionSlice, instrumentationLibName)

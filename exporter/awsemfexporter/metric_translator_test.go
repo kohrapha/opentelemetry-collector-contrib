@@ -518,7 +518,7 @@ func TestTranslateCWMetricToEMFNoDimensions(t *testing.T) {
 	}
 	timestamp := int64(1596151098037)
 	fields := make(map[string]interface{})
-	fields["OTLib"] = "cloudwatch-otel"
+	fields["OTelLib"] = "cloudwatch-otel"
 	fields["spanName"] = "test"
 	fields["spanCounter"] = 0
 
@@ -530,7 +530,7 @@ func TestTranslateCWMetricToEMFNoDimensions(t *testing.T) {
 	obs, logs := observer.New(zap.WarnLevel)
 	logger := zap.New(obs)
 	inputLogEvent := TranslateCWMetricToEMF([]*CWMetrics{met}, logger)
-	expected := "{\"OTLib\":\"cloudwatch-otel\",\"spanCounter\":0,\"spanName\":\"test\"}"
+	expected := "{\"OTelLib\":\"cloudwatch-otel\",\"spanCounter\":0,\"spanName\":\"test\"}"
 
 	assert.Equal(t, expected, *inputLogEvent[0].InputLogEvent.Message)
 
@@ -1227,22 +1227,27 @@ func TestBuildCWMetric(t *testing.T) {
 
 func TestCreateDimensions(t *testing.T) {
 	OTelLib := "OTelLib"
+	mds := []MetricDeclaration{
+		{
+			MetricNameSelectors: []string{"a", "b"},
+		},
+	}
 	testCases := []struct {
-		testName string
-		labels   map[string]string
-		dims     [][]string
+		testName 	 string
+		labels   	 map[string]interface{}
+		expectedDims [][]string
 	}{
 		{
 			"single label",
-			map[string]string{"a": "foo"},
+			map[string]interface{}{"a": "foo"},
 			[][]string{
-				{"a", OTelLib},
 				{OTelLib},
+				{OTelLib, "a"},
 			},
 		},
 		{
 			"multiple labels",
-			map[string]string{"a": "foo", "b": "bar"},
+			map[string]interface{}{"a": "foo", "b": "bar"},
 			[][]string{
 				{"a", "b", OTelLib},
 				{OTelLib},
@@ -1252,7 +1257,7 @@ func TestCreateDimensions(t *testing.T) {
 		},
 		{
 			"no labels",
-			map[string]string{},
+			map[string]interface{}{},
 			[][]string{
 				{OTelLib},
 			},
@@ -1261,23 +1266,11 @@ func TestCreateDimensions(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.testName, func(t *testing.T) {
-			dp := pdata.NewIntDataPoint()
-			dp.InitEmpty()
-			dp.LabelsMap().InitFromMap(tc.labels)
-			dimensions, fields := createDimensions(dp, OTelLib, ZeroAndSingleDimensionRollup)
+			dimensions := createDimensions(mds, tc.labels, ZeroAndSingleDimensionRollup, OTelLib)
 
-			assertDimsEqual(t, tc.dims, dimensions)
-
-			expectedFields := make(map[string]interface{})
-			for k, v := range tc.labels {
-				expectedFields[k] = v
-			}
-			expectedFields[OTellibDimensionKey] = OTelLib
-
-			assert.Equal(t, expectedFields, fields)
+			assertDimsEqual(t, tc.expectedDims, dimensions)
 		})
 	}
-
 }
 
 func TestCalculateRate(t *testing.T) {
