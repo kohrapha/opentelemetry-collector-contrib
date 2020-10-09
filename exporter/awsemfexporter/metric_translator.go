@@ -257,6 +257,8 @@ func buildCWMetric(dp DataPoint, pmd *pdata.Metric, namespace string, metricSlic
 		fields[k] = v
 	})
 
+	// Filter metric declarations by metric name
+	mds = filterMetricDeclarations(mds, pmd)
 	// Create dimensions from metric declarations
 	dimensions := createDimensions(mds, fields, dimensionRollupOption, instrumentationLibName)
 

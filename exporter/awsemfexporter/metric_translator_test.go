@@ -295,169 +295,33 @@ func TestTranslateOtToCWMetricWithFiltering(t *testing.T) {
 					},
 				},
 			},
-			{
-				MetricDescriptor: &metricspb.MetricDescriptor{
-					Name:        "spanGaugeCounter",
-					Description: "Counting all the spans",
-					Unit:        "Count",
-					Type:        metricspb.MetricDescriptor_GAUGE_INT64,
-					LabelKeys: []*metricspb.LabelKey{
-						{Key: "spanName"},
-						{Key: "isItAnError"},
-					},
-				},
-				Timeseries: []*metricspb.TimeSeries{
-					{
-						LabelValues: []*metricspb.LabelValue{
-							{Value: "testSpan", HasValue: true},
-							{Value: "false", HasValue: true},
-						},
-						Points: []*metricspb.Point{
-							{
-								Timestamp: &timestamp.Timestamp{
-									Seconds: 100,
-								},
-								Value: &metricspb.Point_Int64Value{
-									Int64Value: 1,
-								},
-							},
-						},
-					},
-				},
-			},
-			{
-				MetricDescriptor: &metricspb.MetricDescriptor{
-					Name:        "spanDoubleCounter",
-					Description: "Counting all the spans",
-					Unit:        "Count",
-					Type:        metricspb.MetricDescriptor_CUMULATIVE_DOUBLE,
-					LabelKeys: []*metricspb.LabelKey{
-						{Key: "spanName"},
-						{Key: "isItAnError"},
-					},
-				},
-				Timeseries: []*metricspb.TimeSeries{
-					{
-						LabelValues: []*metricspb.LabelValue{
-							{Value: "testSpan", HasValue: true},
-							{Value: "false", HasValue: true},
-						},
-						Points: []*metricspb.Point{
-							{
-								Timestamp: &timestamp.Timestamp{
-									Seconds: 100,
-								},
-								Value: &metricspb.Point_DoubleValue{
-									DoubleValue: 0.1,
-								},
-							},
-						},
-					},
-				},
-			},
-			{
-				MetricDescriptor: &metricspb.MetricDescriptor{
-					Name:        "spanGaugeDoubleCounter",
-					Description: "Counting all the spans",
-					Unit:        "Count",
-					Type:        metricspb.MetricDescriptor_GAUGE_DOUBLE,
-					LabelKeys: []*metricspb.LabelKey{
-						{Key: "spanName"},
-						{Key: "isItAnError"},
-					},
-				},
-				Timeseries: []*metricspb.TimeSeries{
-					{
-						LabelValues: []*metricspb.LabelValue{
-							{Value: "testSpan", HasValue: true},
-							{Value: "false", HasValue: true},
-						},
-						Points: []*metricspb.Point{
-							{
-								Timestamp: &timestamp.Timestamp{
-									Seconds: 100,
-								},
-								Value: &metricspb.Point_DoubleValue{
-									DoubleValue: 0.1,
-								},
-							},
-						},
-					},
-				},
-			},
-			{
-				MetricDescriptor: &metricspb.MetricDescriptor{
-					Name:        "spanTimer",
-					Description: "How long the spans take",
-					Unit:        "Seconds",
-					Type:        metricspb.MetricDescriptor_CUMULATIVE_DISTRIBUTION,
-					LabelKeys: []*metricspb.LabelKey{
-						{Key: "spanName"},
-					},
-				},
-				Timeseries: []*metricspb.TimeSeries{
-					{
-						LabelValues: []*metricspb.LabelValue{
-							{Value: "testSpan", HasValue: true},
-						},
-						Points: []*metricspb.Point{
-							{
-								Timestamp: &timestamp.Timestamp{
-									Seconds: 100,
-								},
-								Value: &metricspb.Point_DistributionValue{
-									DistributionValue: &metricspb.DistributionValue{
-										Sum:   15.0,
-										Count: 5,
-										BucketOptions: &metricspb.DistributionValue_BucketOptions{
-											Type: &metricspb.DistributionValue_BucketOptions_Explicit_{
-												Explicit: &metricspb.DistributionValue_BucketOptions_Explicit{
-													Bounds: []float64{0, 10},
-												},
-											},
-										},
-										Buckets: []*metricspb.DistributionValue_Bucket{
-											{
-												Count: 0,
-											},
-											{
-												Count: 4,
-											},
-											{
-												Count: 1,
-											},
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
 		},
 	}
 
 	rm := internaldata.OCToMetrics(md).ResourceMetrics().At(0)
+	ilm := rm.InstrumentationLibraryMetrics().At(0)
+	ilm.InstrumentationLibrary().InitEmpty()
+	ilm.InstrumentationLibrary().SetName("cloudwatch-lib")
 
 	testCases := []struct {
 		testName            string
 		metricNameSelectors []string
-		numMetrics          int
+		dimensions       	[][]string
 	}{
 		{
-			"No filtering",
-			[]string{"spanCounter", "spanGaugeCounter", "spanDoubleCounter", "spanGaugeDoubleCounter"},
-			4,
+			"With match",
+			[]string{"spanCounter"},
+			[][]string{
+				{"spanName", "isItAnError", OTellibDimensionKey},
+				{OTellibDimensionKey, "spanName"},
+				{OTellibDimensionKey, "isItAnError"},
+				{OTellibDimensionKey},
+			},
 		},
 		{
-			"Only double counters",
-			[]string{"spanDoubleCounter", "spanGaugeDoubleCounter"},
-			2,
-		},
-		{
-			"Remove all",
+			"No match",
 			[]string{},
-			0,
+			nil,
 		},
 	}
 
@@ -472,11 +336,12 @@ func TestTranslateOtToCWMetricWithFiltering(t *testing.T) {
 		t.Run(tc.testName, func(t *testing.T) {
 			cwm, totalDroppedMetrics := TranslateOtToCWMetric(&rm, config)
 			assert.Equal(t, 0, totalDroppedMetrics)
-			assert.Equal(t, tc.numMetrics, len(cwm))
-			if tc.numMetrics > 0 {
-				assert.NotNil(t, cwm)
-				assert.Equal(t, 1, len(cwm[0].Measurements))
-			}
+			assert.Equal(t, 1, len(cwm))
+			assert.NotNil(t, cwm)
+			assert.Equal(t, 1, len(cwm[0].Measurements))
+
+			dimensions := cwm[0].Measurements[0].Dimensions
+			assertDimsEqual(t, tc.dimensions, dimensions)
 		})
 	}
 }
@@ -1268,6 +1133,57 @@ func TestCreateDimensions(t *testing.T) {
 		t.Run(tc.testName, func(t *testing.T) {
 			dimensions := createDimensions(mds, tc.labels, ZeroAndSingleDimensionRollup, OTelLib)
 
+			assertDimsEqual(t, tc.expectedDims, dimensions)
+		})
+	}
+}
+
+func TestCreateDimensionsWithFiltering(t *testing.T) {
+	labels := map[string]interface{}{"a": "foo", "b": "bar", "c": "foobar"}
+	dimensions := [][]string{{"a", "b"}, {"a"}}
+	expectedDimensions := [][]string{
+		{"a", "b", "c", OTellibDimensionKey},
+		{OTellibDimensionKey, "a"},
+		{OTellibDimensionKey, "b"},
+		{OTellibDimensionKey, "c"},
+		{OTellibDimensionKey},
+	}
+
+	testCases := []struct {
+		testName           string
+		metricDeclarations []MetricDeclaration
+		expectedDims       [][]string
+	}{
+		{
+			"No filtering",
+			[]MetricDeclaration{
+				{
+					Dimensions:          dimensions,
+					MetricNameSelectors: []string{"a", "b", "c"},
+				},
+			},
+			expectedDimensions,
+		},
+		{
+			"Some filtering",
+			[]MetricDeclaration{
+				{
+					Dimensions:          dimensions,
+					MetricNameSelectors: []string{"a", "b"},
+				},
+			},
+			expectedDimensions,
+		},
+		{
+			"Filter out all",
+			[]MetricDeclaration{},
+			nil,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.testName, func(t *testing.T) {
+			dimensions := createDimensions(tc.metricDeclarations, labels, ZeroAndSingleDimensionRollup, "cloudwatch-otel")
 			assertDimsEqual(t, tc.expectedDims, dimensions)
 		})
 	}
