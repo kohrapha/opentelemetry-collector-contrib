@@ -35,15 +35,21 @@ import (
 	"go.uber.org/zap/zaptest/observer"
 )
 
-// Sorts 2D slice of dims for equality checking
-func dimsSorter(dims [][]string) func(a, b int) bool {
-	stringified := make([]string, len(dims))
-	for i, v := range dims {
-		stringified[i] = strings.Join(v, ",")
+// Asserts whether dimension sets are equal (i.e. has same sets of ordered dimensions)
+func assertDimsEqual(t *testing.T, dims1, dims2 [][]string) {
+	// Convert to string for easier sorting
+	stringified1 := make([]string, len(dims1))
+	stringified2 := make([]string, len(dims2))
+	for i, v := range dims1 {
+		stringified1[i] = strings.Join(v, ",")
 	}
-	return func(i, j int) bool {
-		return stringified[i] > stringified[j]
+	for i, v := range dims2 {
+		stringified2[i] = strings.Join(v, ",")
 	}
+	// Sort across dimension sets for equality checking
+	sort.Strings(stringified1)
+	sort.Strings(stringified2)
+	assert.Equal(t, stringified1, stringified2)
 }
 
 func TestTranslateOtToCWMetric(t *testing.T) {
@@ -482,145 +488,6 @@ func TestTranslateOtToCWMetricWithFiltering(t *testing.T) {
 					},
 				},
 			},
-			{
-				MetricDescriptor: &metricspb.MetricDescriptor{
-					Name:        "spanGaugeCounter",
-					Description: "Counting all the spans",
-					Unit:        "Count",
-					Type:        metricspb.MetricDescriptor_GAUGE_INT64,
-					LabelKeys: []*metricspb.LabelKey{
-						{Key: "spanName"},
-						{Key: "isItAnError"},
-					},
-				},
-				Timeseries: []*metricspb.TimeSeries{
-					{
-						LabelValues: []*metricspb.LabelValue{
-							{Value: "testSpan", HasValue: true},
-							{Value: "false", HasValue: true},
-						},
-						Points: []*metricspb.Point{
-							{
-								Timestamp: &timestamp.Timestamp{
-									Seconds: 100,
-								},
-								Value: &metricspb.Point_Int64Value{
-									Int64Value: 1,
-								},
-							},
-						},
-					},
-				},
-			},
-			{
-				MetricDescriptor: &metricspb.MetricDescriptor{
-					Name:        "spanDoubleCounter",
-					Description: "Counting all the spans",
-					Unit:        "Count",
-					Type:        metricspb.MetricDescriptor_CUMULATIVE_DOUBLE,
-					LabelKeys: []*metricspb.LabelKey{
-						{Key: "spanName"},
-						{Key: "isItAnError"},
-					},
-				},
-				Timeseries: []*metricspb.TimeSeries{
-					{
-						LabelValues: []*metricspb.LabelValue{
-							{Value: "testSpan", HasValue: true},
-							{Value: "false", HasValue: true},
-						},
-						Points: []*metricspb.Point{
-							{
-								Timestamp: &timestamp.Timestamp{
-									Seconds: 100,
-								},
-								Value: &metricspb.Point_DoubleValue{
-									DoubleValue: 0.1,
-								},
-							},
-						},
-					},
-				},
-			},
-			{
-				MetricDescriptor: &metricspb.MetricDescriptor{
-					Name:        "spanGaugeDoubleCounter",
-					Description: "Counting all the spans",
-					Unit:        "Count",
-					Type:        metricspb.MetricDescriptor_GAUGE_DOUBLE,
-					LabelKeys: []*metricspb.LabelKey{
-						{Key: "spanName"},
-						{Key: "isItAnError"},
-					},
-				},
-				Timeseries: []*metricspb.TimeSeries{
-					{
-						LabelValues: []*metricspb.LabelValue{
-							{Value: "testSpan", HasValue: true},
-							{Value: "false", HasValue: true},
-						},
-						Points: []*metricspb.Point{
-							{
-								Timestamp: &timestamp.Timestamp{
-									Seconds: 100,
-								},
-								Value: &metricspb.Point_DoubleValue{
-									DoubleValue: 0.1,
-								},
-							},
-						},
-					},
-				},
-			},
-			{
-				MetricDescriptor: &metricspb.MetricDescriptor{
-					Name:        "spanTimer",
-					Description: "How long the spans take",
-					Unit:        "Seconds",
-					Type:        metricspb.MetricDescriptor_CUMULATIVE_DISTRIBUTION,
-					LabelKeys: []*metricspb.LabelKey{
-						{Key: "spanName"},
-					},
-				},
-				Timeseries: []*metricspb.TimeSeries{
-					{
-						LabelValues: []*metricspb.LabelValue{
-							{Value: "testSpan", HasValue: true},
-						},
-						Points: []*metricspb.Point{
-							{
-								Timestamp: &timestamp.Timestamp{
-									Seconds: 100,
-								},
-								Value: &metricspb.Point_DistributionValue{
-									DistributionValue: &metricspb.DistributionValue{
-										Sum:   15.0,
-										Count: 5,
-										BucketOptions: &metricspb.DistributionValue_BucketOptions{
-											Type: &metricspb.DistributionValue_BucketOptions_Explicit_{
-												Explicit: &metricspb.DistributionValue_BucketOptions_Explicit{
-													Bounds: []float64{0, 10},
-												},
-											},
-										},
-										Buckets: []*metricspb.DistributionValue_Bucket{
-											{
-												Count: 0,
-											},
-											{
-												Count: 4,
-											},
-											{
-												Count: 1,
-											},
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
 		},
 	}
 
@@ -629,22 +496,22 @@ func TestTranslateOtToCWMetricWithFiltering(t *testing.T) {
 	testCases := []struct {
 		testName            string
 		metricNameSelectors []string
-		numMetrics          int
+		dimensions       	[][]string
 	}{
 		{
-			"No filtering",
-			[]string{"spanCounter", "spanGaugeCounter", "spanDoubleCounter", "spanGaugeDoubleCounter"},
-			4,
+			"With match",
+			[]string{"spanCounter"},
+			[][]string{
+				{"spanName", "isItAnError", "OTLib"},
+				{"OTLib", "spanName"},
+				{"OTLib", "isItAnError"},
+				{"OTLib"},
+			},
 		},
 		{
-			"Only double counters",
-			[]string{"spanDoubleCounter", "spanGaugeDoubleCounter"},
-			2,
-		},
-		{
-			"Remove all",
+			"No match",
 			[]string{},
-			0,
+			nil,
 		},
 	}
 
@@ -659,11 +526,12 @@ func TestTranslateOtToCWMetricWithFiltering(t *testing.T) {
 		t.Run(tc.testName, func(t *testing.T) {
 			cwm, totalDroppedMetrics := TranslateOtToCWMetric(&rm, config)
 			assert.Equal(t, 0, totalDroppedMetrics)
-			assert.Equal(t, tc.numMetrics, len(cwm))
-			if tc.numMetrics > 0 {
-				assert.NotNil(t, cwm)
-				assert.Equal(t, 1, len(cwm[0].Measurements))
-			}
+			assert.Equal(t, 1, len(cwm))
+			assert.NotNil(t, cwm)
+			assert.Equal(t, 1, len(cwm[0].Measurements))
+
+			dimensions := cwm[0].Measurements[0].Dimensions
+			assertDimsEqual(t, tc.dimensions, dimensions)
 		})
 	}
 }
@@ -735,7 +603,6 @@ func TestGetCWMetrics(t *testing.T) {
 }
 
 func TestCreateDimensions(t *testing.T) {
-	OTLib := "OTLib"
 	mds := []MetricDeclaration{
 		{
 			MetricNameSelectors: []string{"a", "b"},
@@ -750,38 +617,84 @@ func TestCreateDimensions(t *testing.T) {
 			"single label",
 			map[string]interface{}{"a": "foo"},
 			[][]string{
-				{"a", OTLib},
-				{OTLib},
-				{OTLib, "a"},
+				{"a", "OTLib"},
+				{"OTLib"},
+				{"OTLib", "a"},
 			},
 		},
 		{
 			"multiple labels",
 			map[string]interface{}{"a": "foo", "b": "bar"},
 			[][]string{
-				{"a", "b", OTLib},
-				{OTLib},
-				{OTLib, "a"},
-				{OTLib, "b"},
+				{"a", "b", "OTLib"},
+				{"OTLib"},
+				{"OTLib", "a"},
+				{"OTLib", "b"},
 			},
 		},
 		{
 			"no labels",
 			map[string]interface{}{},
 			[][]string{
-				{OTLib},
+				{"OTLib"},
 			},
 		},
 	}
 
 	for _, tc := range testCases {
 		dimensions := createDimensions(mds, tc.labels, ZeroAndSingleDimensionRollup)
+			assertDimsEqual(t, tc.expectedDims, dimensions)
+	}
+}
 
-		// Sort slice for equality check
-		sort.Slice(tc.expectedDims, dimsSorter(tc.expectedDims))
-		sort.Slice(dimensions, dimsSorter(dimensions))
+func TestCreateDimensionsWithFiltering(t *testing.T) {
+	labels := map[string]interface{}{"a": "foo", "b": "bar", "c": "foobar"}
+	dimensions := [][]string{{"a", "b"}, {"a"}}
+	expectedDimensions := [][]string{
+		{"a", "b", "c", "OTLib"},
+		{"OTLib", "a"},
+		{"OTLib", "b"},
+		{"OTLib", "c"},
+		{"OTLib"},
+	}
 
-		assert.Equal(t, tc.expectedDims, dimensions)
+	testCases := []struct {
+		testName           string
+		metricDeclarations []MetricDeclaration
+		expectedDims       [][]string
+	}{
+		{
+			"No filtering",
+			[]MetricDeclaration{
+				{
+					Dimensions:          dimensions,
+					MetricNameSelectors: []string{"a", "b", "c"},
+				},
+			},
+			expectedDimensions,
+		},
+		{
+			"Some filtering",
+			[]MetricDeclaration{
+				{
+					Dimensions:          dimensions,
+					MetricNameSelectors: []string{"a", "b"},
+				},
+			},
+			expectedDimensions,
+		},
+		{
+			"Filter out all",
+			[]MetricDeclaration{},
+			nil,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.testName, func(t *testing.T) {
+			dimensions := createDimensions(tc.metricDeclarations, labels, ZeroAndSingleDimensionRollup)
+			assertDimsEqual(t, tc.expectedDims, dimensions)
+		})
 	}
 }
 
