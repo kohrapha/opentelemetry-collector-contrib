@@ -28,13 +28,23 @@ import (
 	"github.com/golang/protobuf/ptypes/wrappers"
 	"github.com/stretchr/testify/assert"
 	"go.opentelemetry.io/collector/consumer/consumerdata"
-	"go.opentelemetry.io/collector/consumer/pdata"
 	"go.opentelemetry.io/collector/translator/conventions"
 	"go.opentelemetry.io/collector/translator/internaldata"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 	"go.uber.org/zap/zaptest/observer"
 )
+
+// Sorts 2D slice of dims for equality checking
+func dimsSorter(dims [][]string) func(a, b int) bool {
+	stringified := make([]string, len(dims))
+	for i, v := range dims {
+		stringified[i] = strings.Join(v, ",")
+	}
+	return func(i, j int) bool {
+		return stringified[i] > stringified[j]
+	}
+}
 
 func TestTranslateOtToCWMetric(t *testing.T) {
 
@@ -726,14 +736,19 @@ func TestGetCWMetrics(t *testing.T) {
 
 func TestCreateDimensions(t *testing.T) {
 	OTLib := "OTLib"
+	mds := []MetricDeclaration{
+		{
+			MetricNameSelectors: []string{"a", "b"},
+		},
+	}
 	testCases := []struct {
-		testName string
-		labels   map[string]string
-		dims     [][]string
+		testName 	 string
+		labels   	 map[string]interface{}
+		expectedDims [][]string
 	}{
 		{
 			"single label",
-			map[string]string{"a": "foo"},
+			map[string]interface{}{"a": "foo"},
 			[][]string{
 				{"a", OTLib},
 				{OTLib},
@@ -742,7 +757,7 @@ func TestCreateDimensions(t *testing.T) {
 		},
 		{
 			"multiple labels",
-			map[string]string{"a": "foo", "b": "bar"},
+			map[string]interface{}{"a": "foo", "b": "bar"},
 			[][]string{
 				{"a", "b", OTLib},
 				{OTLib},
@@ -752,44 +767,22 @@ func TestCreateDimensions(t *testing.T) {
 		},
 		{
 			"no labels",
-			map[string]string{},
+			map[string]interface{}{},
 			[][]string{
 				{OTLib},
 			},
 		},
 	}
 
-	sliceSorter := func(slice [][]string) func(a, b int) bool {
-		stringified := make([]string, len(slice))
-		for i, v := range slice {
-			stringified[i] = strings.Join(v, ",")
-		}
-		return func(i, j int) bool {
-			return stringified[i] > stringified[j]
-		}
-	}
-
 	for _, tc := range testCases {
-		dp := pdata.NewIntDataPoint()
-		dp.InitEmpty()
-		dp.LabelsMap().InitFromMap(tc.labels)
-		dimensions, fields := createDimensions(dp, OTLib, ZeroAndSingleDimensionRollup)
+		dimensions := createDimensions(mds, tc.labels, ZeroAndSingleDimensionRollup)
 
 		// Sort slice for equality check
-		sort.Slice(tc.dims, sliceSorter(tc.dims))
-		sort.Slice(dimensions, sliceSorter(dimensions))
+		sort.Slice(tc.expectedDims, dimsSorter(tc.expectedDims))
+		sort.Slice(dimensions, dimsSorter(dimensions))
 
-		assert.Equal(t, tc.dims, dimensions)
-
-		expectedFields := make(map[string]interface{})
-		for k, v := range tc.labels {
-			expectedFields[k] = v
-		}
-		expectedFields[OtlibDimensionKey] = OTLib
-
-		assert.Equal(t, expectedFields, fields)
+		assert.Equal(t, tc.expectedDims, dimensions)
 	}
-
 }
 
 func TestCalculateRate(t *testing.T) {
