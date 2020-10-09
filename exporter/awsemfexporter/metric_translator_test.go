@@ -58,14 +58,13 @@ func TestTranslateOtToCWMetricWithInstrLibrary(t *testing.T) {
 		Namespace: "",
 		DimensionRollupOption: ZeroAndSingleDimensionRollup,
 	}
-	logger := zap.NewNop()
 	md := createMetricTestData()
 	rm := internaldata.OCToMetrics(md).ResourceMetrics().At(0)
 	ilms := rm.InstrumentationLibraryMetrics()
 	ilm := ilms.At(0)
 	ilm.InstrumentationLibrary().InitEmpty()
 	ilm.InstrumentationLibrary().SetName("cloudwatch-lib")
-	cwm, totalDroppedMetrics := TranslateOtToCWMetric(&rm, config, logger)
+	cwm, totalDroppedMetrics := TranslateOtToCWMetric(&rm, config)
 	assert.Equal(t, 1, totalDroppedMetrics)
 	assert.NotNil(t, cwm)
 	assert.Equal(t, 5, len(cwm))
@@ -100,10 +99,9 @@ func TestTranslateOtToCWMetricWithoutInstrLibrary(t *testing.T) {
 		Namespace: "",
 		DimensionRollupOption: ZeroAndSingleDimensionRollup,
 	}
-	logger := zap.NewNop()
 	md := createMetricTestData()
 	rm := internaldata.OCToMetrics(md).ResourceMetrics().At(0)
-	cwm, totalDroppedMetrics := TranslateOtToCWMetric(&rm, config, logger)
+	cwm, totalDroppedMetrics := TranslateOtToCWMetric(&rm, config)
 	assert.Equal(t, 1, totalDroppedMetrics)
 	assert.NotNil(t, cwm)
 	assert.Equal(t, 5, len(cwm))
@@ -140,7 +138,6 @@ func TestTranslateOtToCWMetricWithNameSpace(t *testing.T) {
 		Namespace: "",
 		DimensionRollupOption: ZeroAndSingleDimensionRollup,
 	}
-	logger := zap.NewNop()
 	md := consumerdata.MetricsData{
 		Node: &commonpb.Node{
 			LibraryInfo: &commonpb.LibraryInfo{ExporterVersion: "SomeVersion"},
@@ -153,7 +150,7 @@ func TestTranslateOtToCWMetricWithNameSpace(t *testing.T) {
 		Metrics: []*metricspb.Metric{},
 	}
 	rm := internaldata.OCToMetrics(md).ResourceMetrics().At(0)
-	cwm, totalDroppedMetrics := TranslateOtToCWMetric(&rm, config, logger)
+	cwm, totalDroppedMetrics := TranslateOtToCWMetric(&rm, config)
 	assert.Equal(t, 0, totalDroppedMetrics)
 	assert.Nil(t, cwm)
 	assert.Equal(t, 0, len(cwm))
@@ -245,7 +242,7 @@ func TestTranslateOtToCWMetricWithNameSpace(t *testing.T) {
 		},
 	}
 	rm = internaldata.OCToMetrics(md).ResourceMetrics().At(0)
-	cwm, totalDroppedMetrics = TranslateOtToCWMetric(&rm, config, logger)
+	cwm, totalDroppedMetrics = TranslateOtToCWMetric(&rm, config)
 	assert.Equal(t, 0, totalDroppedMetrics)
 	assert.NotNil(t, cwm)
 	assert.Equal(t, 1, len(cwm))
@@ -438,7 +435,6 @@ func TestTranslateOtToCWMetricWithFiltering(t *testing.T) {
 		},
 	}
 
-	logger := zap.NewNop()
 	rm := internaldata.OCToMetrics(md).ResourceMetrics().At(0)
 
 	testCases := []struct {
@@ -472,7 +468,7 @@ func TestTranslateOtToCWMetricWithFiltering(t *testing.T) {
 			},
 		}
 		t.Run(tc.testName, func(t *testing.T) {
-			cwm, totalDroppedMetrics := TranslateOtToCWMetric(&rm, config, logger)
+			cwm, totalDroppedMetrics := TranslateOtToCWMetric(&rm, config)
 			assert.Equal(t, 0, totalDroppedMetrics)
 			assert.Equal(t, tc.numMetrics, len(cwm))
 			if tc.numMetrics > 0 {
@@ -503,7 +499,8 @@ func TestTranslateCWMetricToEMF(t *testing.T) {
 		Fields:       fields,
 		Measurements: []CwMeasurement{cwMeasurement},
 	}
-	inputLogEvent := TranslateCWMetricToEMF([]*CWMetrics{met})
+	logger := zap.NewNop()
+	inputLogEvent := TranslateCWMetricToEMF([]*CWMetrics{met}, logger)
 
 	assert.Equal(t, readFromFile("testdata/testTranslateCWMetricToEMF.json"), *inputLogEvent[0].InputLogEvent.Message, "Expect to be equal")
 }
@@ -512,6 +509,9 @@ func TestGetCWMetrics(t *testing.T) {
 	namespace := "Namespace"
 	OTelLib := "OTelLib"
 	instrumentationLibName := "InstrLibName"
+	config := &Config{
+		DimensionRollupOption: "",
+	}
 
 	testCases := []struct {
 		testName string
@@ -999,7 +999,7 @@ func TestGetCWMetrics(t *testing.T) {
 			assert.Equal(t, 1, metrics.Len())
 			metric := metrics.At(0)
 
-			cwMetrics := getCWMetrics(&metric, namespace, instrumentationLibName, "")
+			cwMetrics := getCWMetrics(&metric, namespace, instrumentationLibName, config)
 			assert.Equal(t, len(tc.expected), len(cwMetrics))
 
 			for i, expected := range tc.expected {
@@ -1017,6 +1017,9 @@ func TestBuildCWMetric(t *testing.T) {
 	namespace := "Namespace"
 	instrLibName := "InstrLibName"
 	OTelLib := "OTelLib"
+	config := &Config{
+		DimensionRollupOption: "",
+	}
 	metricSlice := []map[string]string{
 		{
 			"Name": "foo",
@@ -1036,7 +1039,7 @@ func TestBuildCWMetric(t *testing.T) {
 		})
 		dp.SetValue(int64(-17))
 
-		cwMetric := buildCWMetric(dp, &metric, namespace, metricSlice, instrLibName, "")
+		cwMetric := buildCWMetric(dp, &metric, namespace, metricSlice, instrLibName, config)
 
 		assert.NotNil(t, cwMetric)
 		assert.Equal(t, 1, len(cwMetric.Measurements))
@@ -1063,7 +1066,7 @@ func TestBuildCWMetric(t *testing.T) {
 		})
 		dp.SetValue(0.3)
 
-		cwMetric := buildCWMetric(dp, &metric, namespace, metricSlice, instrLibName, "")
+		cwMetric := buildCWMetric(dp, &metric, namespace, metricSlice, instrLibName, config)
 
 		assert.NotNil(t, cwMetric)
 		assert.Equal(t, 1, len(cwMetric.Measurements))
@@ -1092,7 +1095,7 @@ func TestBuildCWMetric(t *testing.T) {
 		})
 		dp.SetValue(int64(-17))
 
-		cwMetric := buildCWMetric(dp, &metric, namespace, metricSlice, instrLibName, "")
+		cwMetric := buildCWMetric(dp, &metric, namespace, metricSlice, instrLibName, config)
 
 		assert.NotNil(t, cwMetric)
 		assert.Equal(t, 1, len(cwMetric.Measurements))
@@ -1121,7 +1124,7 @@ func TestBuildCWMetric(t *testing.T) {
 		})
 		dp.SetValue(0.3)
 
-		cwMetric := buildCWMetric(dp, &metric, namespace, metricSlice, instrLibName, "")
+		cwMetric := buildCWMetric(dp, &metric, namespace, metricSlice, instrLibName, config)
 
 		assert.NotNil(t, cwMetric)
 		assert.Equal(t, 1, len(cwMetric.Measurements))
@@ -1151,7 +1154,7 @@ func TestBuildCWMetric(t *testing.T) {
 		dp.SetBucketCounts([]uint64{1, 2, 3})
 		dp.SetExplicitBounds([]float64{1, 2, 3})
 
-		cwMetric := buildCWMetric(dp, &metric, namespace, metricSlice, instrLibName, "")
+		cwMetric := buildCWMetric(dp, &metric, namespace, metricSlice, instrLibName, config)
 
 		assert.NotNil(t, cwMetric)
 		assert.Equal(t, 1, len(cwMetric.Measurements))
@@ -1179,7 +1182,7 @@ func TestBuildCWMetric(t *testing.T) {
 		dp := pdata.NewIntHistogramDataPoint()
 		dp.InitEmpty()
 
-		cwMetric := buildCWMetric(dp, &metric, namespace, metricSlice, instrLibName, "")
+		cwMetric := buildCWMetric(dp, &metric, namespace, metricSlice, instrLibName, config)
 		assert.Nil(t, cwMetric)
 	})
 }
@@ -1541,11 +1544,10 @@ func BenchmarkTranslateOtToCWMetricWithInstrLibrary(b *testing.B) {
 		Namespace: "",
 		DimensionRollupOption: ZeroAndSingleDimensionRollup,
 	}
-	logger := zap.NewNop()
 
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		TranslateOtToCWMetric(&rm, config, logger)
+		TranslateOtToCWMetric(&rm, config)
 	}
 }
 
@@ -1556,11 +1558,10 @@ func BenchmarkTranslateOtToCWMetricWithoutInstrLibrary(b *testing.B) {
 		Namespace: "",
 		DimensionRollupOption: ZeroAndSingleDimensionRollup,
 	}
-	logger := zap.NewNop()
 
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		TranslateOtToCWMetric(&rm, config, logger)
+		TranslateOtToCWMetric(&rm, config)
 	}
 }
 
@@ -1581,11 +1582,10 @@ func BenchmarkTranslateOtToCWMetricWithNamespace(b *testing.B) {
 		Namespace: "",
 		DimensionRollupOption: ZeroAndSingleDimensionRollup,
 	}
-	logger := zap.NewNop()
 
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		TranslateOtToCWMetric(&rm, config, logger)
+		TranslateOtToCWMetric(&rm, config)
 	}
 }
 
@@ -1609,9 +1609,10 @@ func BenchmarkTranslateCWMetricToEMF(b *testing.B) {
 		Fields:       fields,
 		Measurements: []CwMeasurement{cwMeasurement},
 	}
+	logger := zap.NewNop()
 
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		TranslateCWMetricToEMF([]*CWMetrics{met})
+		TranslateCWMetricToEMF([]*CWMetrics{met}, logger)
 	}
 }

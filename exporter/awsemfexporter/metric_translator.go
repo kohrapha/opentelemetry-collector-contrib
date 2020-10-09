@@ -119,12 +119,10 @@ func (dps DoubleHistogramDataPointSlice) At(i int) DataPoint {
 }
 
 // TranslateOtToCWMetric converts OT metrics to CloudWatch Metric format
-func TranslateOtToCWMetric(rm *pdata.ResourceMetrics, config *Config, logger *zap.Logger) ([]*CWMetrics, int) {
+func TranslateOtToCWMetric(rm *pdata.ResourceMetrics, config *Config) ([]*CWMetrics, int) {
 	var cwMetricList []*CWMetrics
 	totalDroppedMetrics := 0
-	dimensionRollupOption := config.DimensionRollupOption
 	namespace := config.Namespace
-	mds := config.MetricDeclarations
 	var instrumentationLibName string
 
 	if len(namespace) == 0 && !rm.Resource().IsNil() {
@@ -162,19 +160,14 @@ func TranslateOtToCWMetric(rm *pdata.ResourceMetrics, config *Config, logger *za
 				totalDroppedMetrics++
 				continue
 			}
-			filteredMDs := filterMetricDeclarations(mds, &metric)
-			if len(filteredMDs) == 0 {
-				logger.Warn("Dropped metric due to no matching metric declaration", zap.String("metricName", metric.Name()))
-				continue
-			}
-			cwMetrics := getCWMetrics(&metric, namespace, instrumentationLibName, dimensionRollupOption)
+			cwMetrics := getCWMetrics(&metric, namespace, instrumentationLibName, config)
 			cwMetricList = append(cwMetricList, cwMetrics...)
 		}
 	}
 	return cwMetricList, totalDroppedMetrics
 }
 
-func TranslateCWMetricToEMF(cwMetricLists []*CWMetrics) []*LogEvent {
+func TranslateCWMetricToEMF(cwMetricLists []*CWMetrics, logger *zap.Logger) []*LogEvent {
 	// convert CWMetric into map format for compatible with PLE input
 	ples := make([]*LogEvent, 0, maximumLogEventsPerPut)
 	for _, met := range cwMetricLists {
@@ -201,7 +194,7 @@ func TranslateCWMetricToEMF(cwMetricLists []*CWMetrics) []*LogEvent {
 }
 
 // Translates OTLP Metric to list of CW Metrics
-func getCWMetrics(metric *pdata.Metric, namespace string, instrumentationLibName string, dimensionRollupOption string) []*CWMetrics {
+func getCWMetrics(metric *pdata.Metric, namespace string, instrumentationLibName string, config *Config) []*CWMetrics {
 	var result []*CWMetrics
 	var dps DataPoints
 
@@ -234,7 +227,7 @@ func getCWMetrics(metric *pdata.Metric, namespace string, instrumentationLibName
 		if dp.IsNil() {
 			continue
 		}
-		cwMetric := buildCWMetric(dp, metric, namespace, metricSlice, instrumentationLibName, dimensionRollupOption)
+		cwMetric := buildCWMetric(dp, metric, namespace, metricSlice, instrumentationLibName, config)
 		if cwMetric != nil {
 			result = append(result, cwMetric)
 		}
@@ -243,7 +236,9 @@ func getCWMetrics(metric *pdata.Metric, namespace string, instrumentationLibName
 }
 
 // Build CWMetric from DataPoint
-func buildCWMetric(dp DataPoint, pmd *pdata.Metric, namespace string, metricSlice []map[string]string, instrumentationLibName string, dimensionRollupOption string) *CWMetrics {
+func buildCWMetric(dp DataPoint, pmd *pdata.Metric, namespace string, metricSlice []map[string]string, instrumentationLibName string, config *Config) *CWMetrics {
+	dimensionRollupOption := config.DimensionRollupOption
+
 	dimensions, fields := createDimensions(dp, instrumentationLibName, dimensionRollupOption)
 	cwMeasurement := &CwMeasurement{
 		Namespace:  namespace,
