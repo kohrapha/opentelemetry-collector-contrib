@@ -267,11 +267,11 @@ func buildCWMetric(dp DataPoint, pmd *pdata.Metric, namespace string, metricSlic
 	// Create list of dimension sets
 	var dimensionsArray [][][]string
 	if len(mds) > 0 {
-		// Create list of dimension sets from metric declarations, where
-		// each dimension set is defined by a metric declaration
+		// Filter metric declarations and map each metric declaration to a list
+		// of dimension sets
 		dimensionsArray = processMetricDeclarations(mds, pmd, fields)
 	} else {
-		// If not metric declarations defined, create a dimension set with
+		// If not metric declarations defined, create a single dimension set containing
 		// the list of labels + OTLib dimension key
 		dimensionsArray = [][][]string{{append(labels, OTellibDimensionKey)}}
 	}
