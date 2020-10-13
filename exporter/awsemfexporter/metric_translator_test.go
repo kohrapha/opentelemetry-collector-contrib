@@ -15,6 +15,7 @@
 package awsemfexporter
 
 import (
+	"encoding/json"
 	"io/ioutil"
 	"sort"
 	"strings"
@@ -552,15 +553,7 @@ func TestTranslateCWMetricToEMF(t *testing.T) {
 	assert.Equal(t, readFromFile("testdata/testTranslateCWMetricToEMF.json"), *inputLogEvent[0].InputLogEvent.Message, "Expect to be equal")
 }
 
-func TestTranslateCWMetricToEMFNoDimensions(t *testing.T) {
-	cwMeasurement := CwMeasurement{
-		Namespace:  "test-emf",
-		Dimensions: [][]string{},
-		Metrics: []map[string]string{{
-			"Name": "spanCounter",
-			"Unit": "Count",
-		}},
-	}
+func TestTranslateCWMetricToEMFNoMeasurements(t *testing.T) {
 	timestamp := int64(1596151098037)
 	fields := make(map[string]interface{})
 	fields["OTLib"] = "cloudwatch-otel"
@@ -570,7 +563,7 @@ func TestTranslateCWMetricToEMFNoDimensions(t *testing.T) {
 	met := &CWMetrics{
 		Timestamp:    timestamp,
 		Fields:       fields,
-		Measurements: []CwMeasurement{cwMeasurement},
+		Measurements: nil,
 	}
 	obs, logs := observer.New(zap.WarnLevel)
 	logger := zap.New(obs)
@@ -580,9 +573,10 @@ func TestTranslateCWMetricToEMFNoDimensions(t *testing.T) {
 	assert.Equal(t, expected, *inputLogEvent[0].InputLogEvent.Message)
 
 	// Check logged warning message
+	fieldsStr, _ := json.Marshal(fields)
 	expectedLogs := []observer.LoggedEntry{{
-		Entry:   zapcore.Entry{Level: zap.WarnLevel, Message: "Dropped metric due to no matching metric declaration"},
-		Context: []zapcore.Field{zap.String("metricName", "spanCounter")},
+		Entry:   zapcore.Entry{Level: zap.WarnLevel, Message: "Dropped metric due to no matching metric declarations"},
+		Context: []zapcore.Field{zap.String("labels", string(fieldsStr))},
 	}}
 	assert.Equal(t, 1, logs.Len())
 	assert.Equal(t, expectedLogs, logs.AllUntimed())
@@ -949,6 +943,40 @@ func TestBuildCWMetricWithMetricDeclarations(t *testing.T) {
 					{OTLib},
 				},
 			},
+		},
+		{
+			"remove measurements with no dimensions",
+			map[string]string{"a": "foo", "b": "bar", "c": "car"},
+			[]MetricDeclaration{
+				{
+					Dimensions: [][]string{{"a", "b"}, {"b"}},
+					MetricNameSelectors: []string{metricName},
+				},
+				{
+					Dimensions: [][]string{{"a", "d"}},
+					MetricNameSelectors: []string{metricName},
+				},
+			},
+			"",
+			[][][]string{
+				{{"a", "b"}, {"b"}},
+			},
+		},
+		{
+			"multiple declarations w/ no dimensions",
+			map[string]string{"a": "foo", "b": "bar", "c": "car"},
+			[]MetricDeclaration{
+				{
+					Dimensions: [][]string{{"a", "e"}, {"d"}},
+					MetricNameSelectors: []string{metricName},
+				},
+				{
+					Dimensions: [][]string{{"a", "d"}},
+					MetricNameSelectors: []string{metricName},
+				},
+			},
+			"",
+			nil,
 		},
 		{
 			"no labels",
