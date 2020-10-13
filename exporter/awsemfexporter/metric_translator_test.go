@@ -28,6 +28,7 @@ import (
 	"github.com/golang/protobuf/ptypes/wrappers"
 	"github.com/stretchr/testify/assert"
 	"go.opentelemetry.io/collector/consumer/consumerdata"
+	"go.opentelemetry.io/collector/consumer/pdata"
 	"go.opentelemetry.io/collector/translator/conventions"
 	"go.opentelemetry.io/collector/translator/internaldata"
 	"go.uber.org/zap"
@@ -604,100 +605,387 @@ func TestGetCWMetrics(t *testing.T) {
 
 }
 
-func TestCreateDimensions(t *testing.T) {
-	mds := []MetricDeclaration{
-		{
-			MetricNameSelectors: []string{"a", "b"},
-		},
-	}
+func TestBuildCWMetric(t *testing.T) {
+	namespace := "Namespace"
+	OTLib := "OTLib"
+	metricName := "metric1"
+	metricValue := int64(-17)
+	metric := pdata.NewMetric()
+	metric.InitEmpty()
+	metric.SetName(metricName)
+	metricSlice := []map[string]string{{"Name": metricName}}
 	testCases := []struct {
-		testName 	 string
-		labels   	 map[string]interface{}
-		expectedDims [][]string
+		testName 				string
+		labels 					map[string]string
+		dimensionRollupOption 	string
+		expectedDims 			[][]string
 	}{
 		{
-			"single label",
-			map[string]interface{}{"a": "foo"},
+			"Single label w/ no rollup",
+			map[string]string{"a": "foo"},
+			"",
 			[][]string{
-				{"a", "OTLib"},
-				{"OTLib"},
-				{"OTLib", "a"},
+				{"a", OTLib},
 			},
 		},
 		{
-			"multiple labels",
-			map[string]interface{}{"a": "foo", "b": "bar"},
+			"Single label w/ single rollup",
+			map[string]string{"a": "foo"},
+			SingleDimensionRollupOnly,
 			[][]string{
-				{"a", "b", "OTLib"},
-				{"OTLib"},
-				{"OTLib", "a"},
-				{"OTLib", "b"},
+				{"a", OTLib},
+				{OTLib, "a"},
 			},
 		},
 		{
-			"no labels",
-			map[string]interface{}{},
+			"Single label w/ zero + single rollup",
+			map[string]string{"a": "foo"},
+			ZeroAndSingleDimensionRollup,
 			[][]string{
-				{"OTLib"},
+				{"a", OTLib},
+				{OTLib, "a"},
+				{OTLib},
+			},
+		},
+		{
+			"Multiple label w/ no rollup",
+			map[string]string{
+				"a": "foo",
+				"b": "bar",
+				"c": "car",
+			},
+			"",
+			[][]string{
+				{"a", "b", "c", OTLib},
+			},
+		},
+		{
+			"Multiple label w/ rollup",
+			map[string]string{
+				"a": "foo",
+				"b": "bar",
+				"c": "car",
+			},
+			ZeroAndSingleDimensionRollup,
+			[][]string{
+				{"a", "b", "c", OTLib},
+				{OTLib, "a"},
+				{OTLib, "b"},
+				{OTLib, "c"},
+				{OTLib},
 			},
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.testName, func(t *testing.T) {
-			dimensions := createDimensions(mds, tc.labels, ZeroAndSingleDimensionRollup)
-			assertDimsEqual(t, tc.expectedDims, dimensions)
+			dp := pdata.NewIntDataPoint()
+			dp.InitEmpty()
+			dp.LabelsMap().InitFromMap(tc.labels)
+			dp.SetValue(metricValue)
+			config := &Config{
+				Namespace: namespace,
+				DimensionRollupOption: tc.dimensionRollupOption,
+			}
+
+			expectedFields := map[string]interface{}{
+				OtlibDimensionKey: OTLib,
+				metricName: 0,
+			}
+			for k, v := range tc.labels {
+				expectedFields[k] = v
+			}
+
+			cwMetric := buildCWMetric(dp, &metric, namespace, metricSlice, OTLib, config)
+			
+			// Check fields
+			assert.Equal(t, expectedFields, cwMetric.Fields)
+
+			// Check CW measurement
+			assert.Equal(t, 1, len(cwMetric.Measurements))
+			cwMeasurement := cwMetric.Measurements[0]
+			assert.Equal(t, namespace, cwMeasurement.Namespace)
+			assert.Equal(t, metricSlice, cwMeasurement.Metrics)
+			assertDimsEqual(t, tc.expectedDims, cwMeasurement.Dimensions)
 		})
 	}
 }
 
-func TestCreateDimensionsWithFiltering(t *testing.T) {
-	labels := map[string]interface{}{"a": "foo", "b": "bar", "c": "foobar"}
-	dimensions := [][]string{{"a", "b"}, {"a"}}
-	expectedDimensions := [][]string{
-		{"a", "b", "c", "OTLib"},
-		{"OTLib", "a"},
-		{"OTLib", "b"},
-		{"OTLib", "c"},
-		{"OTLib"},
-	}
-
+func TestBuildCWMetricWithMetricDeclarations(t *testing.T) {
+	namespace := "Namespace"
+	OTLib := "OTLib"
+	metricName := "metric1"
+	metricValue := int64(-17)
+	metric := pdata.NewMetric()
+	metric.InitEmpty()
+	metric.SetName(metricName)
+	metricSlice := []map[string]string{{"Name": metricName}}
 	testCases := []struct {
-		testName           string
-		metricDeclarations []MetricDeclaration
-		expectedDims       [][]string
+		testName 				string
+		labels 					map[string]string
+		metricDeclarations 		[]MetricDeclaration
+		dimensionRollupOption 	string
+		expectedDims 			[][][]string
 	}{
 		{
-			"No filtering",
+			"Single label w/ no rollup",
+			map[string]string{"a": "foo"},
 			[]MetricDeclaration{
 				{
-					Dimensions:          dimensions,
-					MetricNameSelectors: []string{"a", "b", "c"},
+					Dimensions: [][]string{{"a"}},
+					MetricNameSelectors: []string{metricName},
 				},
 			},
-			expectedDimensions,
+			"",
+			[][][]string{{{"a"}}},
 		},
 		{
-			"Some filtering",
+			"Single label w/ single rollup",
+			map[string]string{"a": "foo"},
 			[]MetricDeclaration{
 				{
-					Dimensions:          dimensions,
-					MetricNameSelectors: []string{"a", "b"},
+					Dimensions: [][]string{{"a"}},
+					MetricNameSelectors: []string{metricName},
 				},
 			},
-			expectedDimensions,
+			SingleDimensionRollupOnly,
+			[][][]string{{{"a"}, {"a", OTLib}}},
 		},
 		{
-			"Filter out all",
-			[]MetricDeclaration{},
+			"Single label w/ zero/single rollup",
+			map[string]string{"a": "foo"},
+			[]MetricDeclaration{
+				{
+					Dimensions: [][]string{{"a"}},
+					MetricNameSelectors: []string{metricName},
+				},
+			},
+			ZeroAndSingleDimensionRollup,
+			[][][]string{{{"a"}, {"a", OTLib}, {OTLib}}},
+		},
+		{
+			"No matching metric name",
+			map[string]string{"a": "foo"},
+			[]MetricDeclaration{
+				{
+					Dimensions: [][]string{{"a"}},
+					MetricNameSelectors: []string{"invalid"},
+				},
+			},
+			"",
+			nil,
+		},
+		{
+			"multiple labels w/ no rollup",
+			map[string]string{"a": "foo", "b": "bar"},
+			[]MetricDeclaration{
+				{
+					Dimensions: [][]string{{"a"}},
+					MetricNameSelectors: []string{metricName},
+				},
+			},
+			"",
+			[][][]string{{{"a"}}},
+		},
+		{
+			"multiple labels w/ rollup",
+			map[string]string{"a": "foo", "b": "bar"},
+			[]MetricDeclaration{
+				{
+					Dimensions: [][]string{{"a"}},
+					MetricNameSelectors: []string{metricName},
+				},
+			},
+			ZeroAndSingleDimensionRollup,
+			[][][]string{{
+				{"a"},
+				{OTLib, "a"},
+				{OTLib, "b"},
+				{OTLib},
+			}},
+		},
+		{
+			"multiple labels + multiple dimensions w/ no rollup",
+			map[string]string{"a": "foo", "b": "bar"},
+			[]MetricDeclaration{
+				{
+					Dimensions: [][]string{{"a", "b"}, {"b"}},
+					MetricNameSelectors: []string{metricName},
+				},
+			},
+			"",
+			[][][]string{{{"a", "b"}, {"b"}}},
+		},
+		{
+			"multiple labels + multiple dimensions w/ rollup",
+			map[string]string{"a": "foo", "b": "bar"},
+			[]MetricDeclaration{
+				{
+					Dimensions: [][]string{{"a", "b"}, {"b"}},
+					MetricNameSelectors: []string{metricName},
+				},
+			},
+			ZeroAndSingleDimensionRollup,
+			[][][]string{{
+				{"a", "b"},
+				{"b"},
+				{OTLib, "a"},
+				{OTLib, "b"},
+				{OTLib},
+			}},
+		},
+		{
+			"multiple labels, multiple dimensions w/ invalid dimension",
+			map[string]string{"a": "foo", "b": "bar"},
+			[]MetricDeclaration{
+				{
+					Dimensions: [][]string{{"a", "b", "c"}, {"b"}},
+					MetricNameSelectors: []string{metricName},
+				},
+			},
+			ZeroAndSingleDimensionRollup,
+			[][][]string{{
+				{"b"},
+				{OTLib, "a"},
+				{OTLib, "b"},
+				{OTLib},
+			}},
+		},
+		{
+			"multiple labels, multiple dimensions w/ missing dimension",
+			map[string]string{"a": "foo", "b": "bar", "c": "car"},
+			[]MetricDeclaration{
+				{
+					Dimensions: [][]string{{"a", "b"}, {"b"}},
+					MetricNameSelectors: []string{metricName},
+				},
+			},
+			ZeroAndSingleDimensionRollup,
+			[][][]string{{
+				{"a", "b"},
+				{"b"},
+				{OTLib, "a"},
+				{OTLib, "b"},
+				{OTLib, "c"},
+				{OTLib},
+			}},
+		},
+		{
+			"multiple metric declarations w/ no rollup",
+			map[string]string{"a": "foo", "b": "bar", "c": "car"},
+			[]MetricDeclaration{
+				{
+					Dimensions: [][]string{{"a", "b"}, {"b"}},
+					MetricNameSelectors: []string{metricName},
+				},
+				{
+					Dimensions: [][]string{{"a", "c"}, {"b"}, {"c"}},
+					MetricNameSelectors: []string{metricName},
+				},
+				{
+					Dimensions: [][]string{{"a", "d"}, {"b", "c"}},
+					MetricNameSelectors: []string{metricName},
+				},
+			},
+			"",
+			[][][]string{
+				{{"a", "b"}, {"b"}},
+				{{"a", "c"}, {"b"}, {"c"}},
+				{{"b", "c"}},
+			},
+		},
+		{
+			"multiple metric declarations w/ rollup",
+			map[string]string{"a": "foo", "b": "bar", "c": "car"},
+			[]MetricDeclaration{
+				{
+					Dimensions: [][]string{{"a", "b"}, {"b"}},
+					MetricNameSelectors: []string{metricName},
+				},
+				{
+					Dimensions: [][]string{{"a", "c"}, {"b"}, {"c"}},
+					MetricNameSelectors: []string{metricName},
+				},
+				{
+					Dimensions: [][]string{{"a", "d"}, {"b", "c"}},
+					MetricNameSelectors: []string{metricName},
+				},
+			},
+			ZeroAndSingleDimensionRollup,
+			[][][]string{
+				{
+					{"a", "b"},
+					{"b"},
+					{OTLib, "a"},
+					{OTLib, "b"},
+					{OTLib, "c"},
+					{OTLib},
+				},
+				{
+					{"a", "c"},
+					{"b"},
+					{"c"},
+					{OTLib, "a"},
+					{OTLib, "b"},
+					{OTLib, "c"},
+					{OTLib},
+				},
+				{
+					{"b", "c"},
+					{OTLib, "a"},
+					{OTLib, "b"},
+					{OTLib, "c"},
+					{OTLib},
+				},
+			},
+		},
+		{
+			"no labels",
+			map[string]string{},
+			[]MetricDeclaration{
+				{
+					Dimensions: [][]string{{"a", "b", "c"}, {"b"}},
+					MetricNameSelectors: []string{metricName},
+				},
+			},
+			ZeroAndSingleDimensionRollup,
 			nil,
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.testName, func(t *testing.T) {
-			dimensions := createDimensions(tc.metricDeclarations, labels, ZeroAndSingleDimensionRollup)
-			assertDimsEqual(t, tc.expectedDims, dimensions)
+			dp := pdata.NewIntDataPoint()
+			dp.InitEmpty()
+			dp.LabelsMap().InitFromMap(tc.labels)
+			dp.SetValue(metricValue)
+			config := &Config{
+				Namespace: namespace,
+				DimensionRollupOption: tc.dimensionRollupOption,
+				MetricDeclarations: tc.metricDeclarations,
+			}
+
+			expectedFields := map[string]interface{}{
+				OtlibDimensionKey: OTLib,
+				metricName: 0,
+			}
+			for k, v := range tc.labels {
+				expectedFields[k] = v
+			}
+
+			cwMetric := buildCWMetric(dp, &metric, namespace, metricSlice, OTLib, config)
+			
+			// Check fields
+			assert.Equal(t, expectedFields, cwMetric.Fields)
+
+			// Check CW measurement
+			assert.Equal(t, len(tc.expectedDims), len(cwMetric.Measurements))
+			for i, dimensions := range tc.expectedDims {
+				cwMeasurement := cwMetric.Measurements[i]
+				assert.Equal(t, namespace, cwMeasurement.Namespace)
+				assert.Equal(t, metricSlice, cwMeasurement.Metrics)
+				assertDimsEqual(t, dimensions, cwMeasurement.Dimensions)
+			}
 		})
 	}
 }
