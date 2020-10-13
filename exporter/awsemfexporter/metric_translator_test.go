@@ -644,8 +644,10 @@ func TestCreateDimensions(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		dimensions := createDimensions(mds, tc.labels, ZeroAndSingleDimensionRollup)
+		t.Run(tc.testName, func(t *testing.T) {
+			dimensions := createDimensions(mds, tc.labels, ZeroAndSingleDimensionRollup)
 			assertDimsEqual(t, tc.expectedDims, dimensions)
+		})
 	}
 }
 
