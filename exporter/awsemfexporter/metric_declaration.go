@@ -39,11 +39,31 @@ func (md *MetricDeclaration) Matches(metric *pdata.Metric) bool {
 	return false
 }
 
-// Retrieve a filtered list of metric declarations that matches the given metric name.
-func filterMetricDeclarations(mds []MetricDeclaration, metric *pdata.Metric) (filtered []MetricDeclaration) {
+// Extracts dimensions within the MetricDeclaration that only contains labels found in `labels`.
+func (md *MetricDeclaration) ExtractDimensions(labels map[string]interface{}) (dimensions [][]string) {
+	for _, dimensionSet := range md.Dimensions {
+		includeSet := true
+		for _, dim := range dimensionSet {
+			if _, ok := labels[dim]; !ok {
+				includeSet = false
+				break
+			}
+		}
+		if includeSet {
+			dimensions = append(dimensions, dimensionSet)
+		}
+	}
+	return
+}
+
+// Processes a list of MetricDeclarations and returns a list of dimensions that matches the given `metric`.
+func processMetricDeclarations(mds []MetricDeclaration, metric *pdata.Metric, labels map[string]interface{}) (dimensionsList [][][]string) {
 	for _, md := range mds {
 		if md.Matches(metric) {
-			filtered = append(filtered, md)
+			dimensions := md.ExtractDimensions(labels)
+			if len(dimensions) > 0 {
+				dimensionsList = append(dimensionsList, dimensions)
+			}
 		}
 	}
 	return
