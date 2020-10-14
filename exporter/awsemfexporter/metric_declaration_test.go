@@ -21,27 +21,54 @@ import (
 	"go.opentelemetry.io/collector/consumer/pdata"
 )
 
-func TestMatches(t *testing.T) {
+func TestInit(t *testing.T) {
 	md := &MetricDeclaration{
 		MetricNameSelectors: []string{"a", "b", "aa"},
 	}
+	md.Init()
+	assert.Equal(t, 3, len(md.metricRegexList))
+
+	md = &MetricDeclaration{
+		MetricNameSelectors: []string{"a.*", "b$", "aa+"},
+	}
+	md.Init()
+	assert.Equal(t, 3, len(md.metricRegexList))
+}
+
+func TestMatches(t *testing.T) {
+	md := &MetricDeclaration{
+		MetricNameSelectors: []string{"^a+$", "^b.*$", "^ac+a$"},
+	}
+	md.Init()
 
 	metric := pdata.NewMetric()
 	metric.InitEmpty()
 	metric.SetName("a")
 	assert.True(t, md.Matches(&metric))
 
+	metric.SetName("aa")
+	assert.True(t, md.Matches(&metric))
+
+	metric.SetName("aaaa")
+	assert.True(t, md.Matches(&metric))
+
+	metric.SetName("aaab")
+	assert.False(t, md.Matches(&metric))
+
 	metric.SetName("b")
+	assert.True(t, md.Matches(&metric))
+
+	metric.SetName("ba")
 	assert.True(t, md.Matches(&metric))
 
 	metric.SetName("c")
 	assert.False(t, md.Matches(&metric))
 	
-	metric.SetName("aa")
+	metric.SetName("aca")
 	assert.True(t, md.Matches(&metric))
 
-	metric.SetName("aaa")
-	assert.False(t, md.Matches(&metric))
+	metric.SetName("accca")
+	assert.True(t, md.Matches(&metric))
 }
 
 func TestExtractDimensions(t *testing.T) {
@@ -121,6 +148,9 @@ func TestProcessMetricDeclarations(t *testing.T) {
 			Dimensions: [][]string{{"dim1", "dim2"}, {"dim1"}},
 			MetricNameSelectors: []string{"a"},
 		},
+	}
+	for _, decl := range mds {
+		decl.Init()
 	}
 	testCases := []struct{
 		testName 		string
