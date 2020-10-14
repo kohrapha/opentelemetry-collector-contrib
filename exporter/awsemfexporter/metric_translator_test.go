@@ -333,7 +333,7 @@ func TestTranslateOtToCWMetricWithFiltering(t *testing.T) {
 		config := &Config{
 			Namespace: "",
 			DimensionRollupOption: ZeroAndSingleDimensionRollup,
-			MetricDeclarations: []MetricDeclaration{
+			MetricDeclarations: []*MetricDeclaration{
 				{
 					Dimensions: [][]string{{"isItAnError", "spanName"}},
 					MetricNameSelectors: tc.metricNameSelectors,
@@ -1204,14 +1204,14 @@ func TestBuildCWMetricWithMetricDeclarations(t *testing.T) {
 	testCases := []struct {
 		testName 				string
 		labels 					map[string]string
-		metricDeclarations 		[]MetricDeclaration
+		metricDeclarations 		[]*MetricDeclaration
 		dimensionRollupOption 	string
 		expectedDims 			[][][]string
 	}{
 		{
 			"Single label w/ no rollup",
 			map[string]string{"a": "foo"},
-			[]MetricDeclaration{
+			[]*MetricDeclaration{
 				{
 					Dimensions: [][]string{{"a"}},
 					MetricNameSelectors: []string{metricName},
@@ -1223,7 +1223,7 @@ func TestBuildCWMetricWithMetricDeclarations(t *testing.T) {
 		{
 			"Single label + OTelLib w/ no rollup",
 			map[string]string{"a": "foo"},
-			[]MetricDeclaration{
+			[]*MetricDeclaration{
 				{
 					Dimensions: [][]string{{"a", OTelLib}},
 					MetricNameSelectors: []string{metricName},
@@ -1235,7 +1235,7 @@ func TestBuildCWMetricWithMetricDeclarations(t *testing.T) {
 		{
 			"Single label w/ single rollup",
 			map[string]string{"a": "foo"},
-			[]MetricDeclaration{
+			[]*MetricDeclaration{
 				{
 					Dimensions: [][]string{{"a"}},
 					MetricNameSelectors: []string{metricName},
@@ -1247,7 +1247,7 @@ func TestBuildCWMetricWithMetricDeclarations(t *testing.T) {
 		{
 			"Single label w/ zero/single rollup",
 			map[string]string{"a": "foo"},
-			[]MetricDeclaration{
+			[]*MetricDeclaration{
 				{
 					Dimensions: [][]string{{"a"}},
 					MetricNameSelectors: []string{metricName},
@@ -1259,7 +1259,7 @@ func TestBuildCWMetricWithMetricDeclarations(t *testing.T) {
 		{
 			"No matching metric name",
 			map[string]string{"a": "foo"},
-			[]MetricDeclaration{
+			[]*MetricDeclaration{
 				{
 					Dimensions: [][]string{{"a"}},
 					MetricNameSelectors: []string{"invalid"},
@@ -1271,7 +1271,7 @@ func TestBuildCWMetricWithMetricDeclarations(t *testing.T) {
 		{
 			"multiple labels w/ no rollup",
 			map[string]string{"a": "foo", "b": "bar"},
-			[]MetricDeclaration{
+			[]*MetricDeclaration{
 				{
 					Dimensions: [][]string{{"a"}},
 					MetricNameSelectors: []string{metricName},
@@ -1283,7 +1283,7 @@ func TestBuildCWMetricWithMetricDeclarations(t *testing.T) {
 		{
 			"multiple labels w/ rollup",
 			map[string]string{"a": "foo", "b": "bar"},
-			[]MetricDeclaration{
+			[]*MetricDeclaration{
 				{
 					Dimensions: [][]string{{"a"}},
 					MetricNameSelectors: []string{metricName},
@@ -1300,7 +1300,7 @@ func TestBuildCWMetricWithMetricDeclarations(t *testing.T) {
 		{
 			"multiple labels + multiple dimensions w/ no rollup",
 			map[string]string{"a": "foo", "b": "bar"},
-			[]MetricDeclaration{
+			[]*MetricDeclaration{
 				{
 					Dimensions: [][]string{{"a", "b"}, {"b"}},
 					MetricNameSelectors: []string{metricName},
@@ -1312,7 +1312,7 @@ func TestBuildCWMetricWithMetricDeclarations(t *testing.T) {
 		{
 			"multiple labels + multiple dimensions + OTelLib w/ no rollup",
 			map[string]string{"a": "foo", "b": "bar"},
-			[]MetricDeclaration{
+			[]*MetricDeclaration{
 				{
 					Dimensions: [][]string{{"a", "b"}, {"b", OTelLib}, {OTelLib}},
 					MetricNameSelectors: []string{metricName},
@@ -1324,7 +1324,7 @@ func TestBuildCWMetricWithMetricDeclarations(t *testing.T) {
 		{
 			"multiple labels + multiple dimensions w/ rollup",
 			map[string]string{"a": "foo", "b": "bar"},
-			[]MetricDeclaration{
+			[]*MetricDeclaration{
 				{
 					Dimensions: [][]string{{"a", "b"}, {"b"}},
 					MetricNameSelectors: []string{metricName},
@@ -1342,7 +1342,7 @@ func TestBuildCWMetricWithMetricDeclarations(t *testing.T) {
 		{
 			"multiple labels, multiple dimensions w/ invalid dimension",
 			map[string]string{"a": "foo", "b": "bar"},
-			[]MetricDeclaration{
+			[]*MetricDeclaration{
 				{
 					Dimensions: [][]string{{"a", "b", "c"}, {"b"}},
 					MetricNameSelectors: []string{metricName},
@@ -1359,7 +1359,7 @@ func TestBuildCWMetricWithMetricDeclarations(t *testing.T) {
 		{
 			"multiple labels, multiple dimensions w/ missing dimension",
 			map[string]string{"a": "foo", "b": "bar", "c": "car"},
-			[]MetricDeclaration{
+			[]*MetricDeclaration{
 				{
 					Dimensions: [][]string{{"a", "b"}, {"b"}},
 					MetricNameSelectors: []string{metricName},
@@ -1378,7 +1378,7 @@ func TestBuildCWMetricWithMetricDeclarations(t *testing.T) {
 		{
 			"multiple metric declarations w/ no rollup",
 			map[string]string{"a": "foo", "b": "bar", "c": "car"},
-			[]MetricDeclaration{
+			[]*MetricDeclaration{
 				{
 					Dimensions: [][]string{{"a", "b"}, {"b"}},
 					MetricNameSelectors: []string{metricName},
@@ -1402,7 +1402,7 @@ func TestBuildCWMetricWithMetricDeclarations(t *testing.T) {
 		{
 			"multiple metric declarations w/ rollup",
 			map[string]string{"a": "foo", "b": "bar", "c": "car"},
-			[]MetricDeclaration{
+			[]*MetricDeclaration{
 				{
 					Dimensions: [][]string{{"a", "b"}, {"b"}},
 					MetricNameSelectors: []string{metricName},
@@ -1447,7 +1447,7 @@ func TestBuildCWMetricWithMetricDeclarations(t *testing.T) {
 		{
 			"remove measurements with no dimensions",
 			map[string]string{"a": "foo", "b": "bar", "c": "car"},
-			[]MetricDeclaration{
+			[]*MetricDeclaration{
 				{
 					Dimensions: [][]string{{"a", "b"}, {"b"}},
 					MetricNameSelectors: []string{metricName},
@@ -1465,7 +1465,7 @@ func TestBuildCWMetricWithMetricDeclarations(t *testing.T) {
 		{
 			"multiple declarations w/ no dimensions",
 			map[string]string{"a": "foo", "b": "bar", "c": "car"},
-			[]MetricDeclaration{
+			[]*MetricDeclaration{
 				{
 					Dimensions: [][]string{{"a", "e"}, {"d"}},
 					MetricNameSelectors: []string{metricName},
@@ -1481,7 +1481,7 @@ func TestBuildCWMetricWithMetricDeclarations(t *testing.T) {
 		{
 			"no labels",
 			map[string]string{},
-			[]MetricDeclaration{
+			[]*MetricDeclaration{
 				{
 					Dimensions: [][]string{{"a", "b", "c"}, {"b"}},
 					MetricNameSelectors: []string{metricName},
