@@ -501,16 +501,16 @@ func TestTranslateOtToCWMetricWithFiltering(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
+		md := MetricDeclaration{
+			Dimensions: [][]string{{"isItAnError", "spanName"}},
+			MetricNameSelectors: tc.metricNameSelectors,
+		}
 		config := &Config{
 			Namespace: "",
 			DimensionRollupOption: ZeroAndSingleDimensionRollup,
-			MetricDeclarations: []*MetricDeclaration{
-				{
-					Dimensions: [][]string{{"isItAnError", "spanName"}},
-					MetricNameSelectors: tc.metricNameSelectors,
-				},
-			},
+			MetricDeclarations: []*MetricDeclaration{&md},
 		}
+		md.Init()
 		t.Run(tc.testName, func(t *testing.T) {
 			cwm, totalDroppedMetrics := TranslateOtToCWMetric(&rm, config)
 			assert.Equal(t, 0, totalDroppedMetrics)
@@ -1002,6 +1002,9 @@ func TestBuildCWMetricWithMetricDeclarations(t *testing.T) {
 				Namespace: namespace,
 				DimensionRollupOption: tc.dimensionRollupOption,
 				MetricDeclarations: tc.metricDeclarations,
+			}
+			for _, decl := range tc.metricDeclarations {
+				decl.Init()
 			}
 
 			expectedFields := map[string]interface{}{

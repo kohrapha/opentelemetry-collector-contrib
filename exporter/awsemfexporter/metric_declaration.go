@@ -14,10 +14,14 @@
 
 package awsemfexporter
 
-import "go.opentelemetry.io/collector/consumer/pdata"
+import (
+	"regexp"
+
+	"go.opentelemetry.io/collector/consumer/pdata"
+)
 
 // Characterizes a rule to be used to set dimensions for certain incoming metrics,
-// filtered by their metric names. 
+// filtered by their metric names.
 type MetricDeclaration struct {
 	// List of dimension sets (which are lists of dimension names) to be included
 	// in exported metrics. If the metric does not contain any of the specified
@@ -26,13 +30,23 @@ type MetricDeclaration struct {
 	// List of regex strings to be matched against metric names to determine which
 	// metrics should be included with this metric declaration rule.
 	MetricNameSelectors []string `mapstructure:"metric_name_selectors"`
+
+	// List of compiled regexes for metric name selectors.
+	metricRegexList []*regexp.Regexp
+}
+
+func (md *MetricDeclaration) Init() {
+	md.metricRegexList = make([]*regexp.Regexp, len(md.MetricNameSelectors))
+	for i, selector := range md.MetricNameSelectors {
+		md.metricRegexList[i] = regexp.MustCompile(selector)
+	}
 }
 
 // Returns true if the given OTLP Metric's name matches any of the Metric Declaration's
 // metric name selectors.
 func (md *MetricDeclaration) Matches(metric *pdata.Metric) bool {
-	for _, name := range md.MetricNameSelectors {
-		if name == metric.Name() {
+	for _, regex := range md.metricRegexList {
+		if regex.MatchString(metric.Name()) {
 			return true
 		}
 	}
