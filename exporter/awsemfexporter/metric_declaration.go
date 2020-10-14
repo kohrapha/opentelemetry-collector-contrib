@@ -57,7 +57,7 @@ func (md *MetricDeclaration) ExtractDimensions(labels map[string]interface{}) (d
 }
 
 // Processes a list of MetricDeclarations and returns a list of dimensions that matches the given `metric`.
-func processMetricDeclarations(mds []MetricDeclaration, metric *pdata.Metric, labels map[string]interface{}) (dimensionsList [][][]string) {
+func processMetricDeclarations(mds []*MetricDeclaration, metric *pdata.Metric, labels map[string]interface{}) (dimensionsList [][][]string) {
 	for _, md := range mds {
 		if md.Matches(metric) {
 			dimensions := md.ExtractDimensions(labels)

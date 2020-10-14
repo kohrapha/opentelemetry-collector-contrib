@@ -108,7 +108,7 @@ func TestExtractDimensions(t *testing.T) {
 }
 
 func TestProcessMetricDeclarations(t *testing.T) {
-	mds := []MetricDeclaration{
+	mds := []*MetricDeclaration{
 		{
 			Dimensions: [][]string{{"dim1", "dim2"}},
 			MetricNameSelectors: []string{"a", "b"},
