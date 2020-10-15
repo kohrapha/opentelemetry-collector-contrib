@@ -130,6 +130,22 @@ func TestExtractDimensions(t *testing.T) {
 			},
 			[][]string{{"a"}},
 		},
+		{
+			"no dimensions",
+			[][]string{},
+			map[string]interface{}{
+				"a": "foo",
+			},
+			nil,
+		},
+		{
+			"empty dimension set",
+			[][]string{{}},
+			map[string]interface{}{
+				"a": "foo",
+			},
+			nil,
+		},
 	}
 
 	for _, tc := range testCases {

@@ -61,6 +61,9 @@ func (md *MetricDeclaration) Matches(metric *pdata.Metric) bool {
 // Extracts dimensions within the MetricDeclaration that only contains labels found in `labels`.
 func (md *MetricDeclaration) ExtractDimensions(labels map[string]interface{}) (dimensions [][]string) {
 	for _, dimensionSet := range md.Dimensions {
+		if len(dimensionSet) == 0 {
+			continue
+		}
 		includeSet := true
 		for _, dim := range dimensionSet {
 			if _, ok := labels[dim]; !ok {
