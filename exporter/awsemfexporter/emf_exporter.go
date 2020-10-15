@@ -63,11 +63,18 @@ func New(
 	svcStructuredLog := NewCloudWatchLogsClient(logger, awsConfig, session)
 	collectorIdentifier, _ := uuid.NewRandom()
 
-	// Initialize metric declarations
+	// Initialize metric declarations and filter out invalid ones
 	emfConfig := config.(*Config)
+	validDeclarations := make([]*MetricDeclaration, 0, len(emfConfig.MetricDeclarations))
 	for _, declaration := range emfConfig.MetricDeclarations {
-		declaration.Init()
+		err := declaration.Init()
+		if err != nil {
+			logger.Warn(err.Error())
+		} else {
+			validDeclarations = append(validDeclarations, declaration)
+		}
 	}
+	emfConfig.MetricDeclarations = validDeclarations
 
 	emfExporter := &emfExporter{
 		svcStructuredLog: svcStructuredLog,
