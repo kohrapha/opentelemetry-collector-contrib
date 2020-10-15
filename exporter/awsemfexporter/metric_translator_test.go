@@ -494,7 +494,7 @@ func TestTranslateOtToCWMetricWithFiltering(t *testing.T) {
 		},
 		{
 			"No match",
-			[]string{},
+			[]string{"invalid"},
 			nil,
 			0,
 		},

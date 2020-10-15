@@ -25,13 +25,15 @@ func TestInit(t *testing.T) {
 	md := &MetricDeclaration{
 		MetricNameSelectors: []string{"a", "b", "aa"},
 	}
-	md.Init()
+	err := md.Init()
+	assert.Nil(t, err)
 	assert.Equal(t, 3, len(md.metricRegexList))
 
 	md = &MetricDeclaration{
 		MetricNameSelectors: []string{"a.*", "b$", "aa+"},
 	}
-	md.Init()
+	err = md.Init()
+	assert.Nil(t, err)
 	assert.Equal(t, 3, len(md.metricRegexList))
 }
 
@@ -39,7 +41,8 @@ func TestMatches(t *testing.T) {
 	md := &MetricDeclaration{
 		MetricNameSelectors: []string{"^a+$", "^b.*$", "^ac+a$"},
 	}
-	md.Init()
+	err := md.Init()
+	assert.Nil(t, err)
 
 	metric := pdata.NewMetric()
 	metric.InitEmpty()
@@ -69,6 +72,12 @@ func TestMatches(t *testing.T) {
 
 	metric.SetName("accca")
 	assert.True(t, md.Matches(&metric))
+
+	// Test invalid metric declaration
+	md = &MetricDeclaration{}
+	err = md.Init()
+	assert.NotNil(t, err)
+	assert.EqualError(t, err, "Invalid metric declaration: no metric name selectors defined.")
 }
 
 func TestExtractDimensions(t *testing.T) {
@@ -126,7 +135,10 @@ func TestExtractDimensions(t *testing.T) {
 	for _, tc := range testCases {
 		md := MetricDeclaration{
 			Dimensions: tc.dimensions,
+			MetricNameSelectors: []string{"foo"},
 		}
+		err := md.Init()
+		assert.Nil(t, err)
 		t.Run(tc.testName, func(t *testing.T) {
 			dimensions := md.ExtractDimensions(tc.labels)
 			assertDimsEqual(t, tc.extractedDimensions, dimensions)
@@ -150,7 +162,8 @@ func TestProcessMetricDeclarations(t *testing.T) {
 		},
 	}
 	for _, decl := range mds {
-		decl.Init()
+		err := decl.Init()
+		assert.Nil(t, err)
 	}
 	testCases := []struct{
 		testName 		string

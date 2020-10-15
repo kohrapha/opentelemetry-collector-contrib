@@ -15,6 +15,7 @@
 package awsemfexporter
 
 import (
+	"errors"
 	"regexp"
 
 	"go.opentelemetry.io/collector/consumer/pdata"
@@ -35,11 +36,15 @@ type MetricDeclaration struct {
 	metricRegexList []*regexp.Regexp
 }
 
-func (md *MetricDeclaration) Init() {
+func (md *MetricDeclaration) Init() (err error) {
+	if len(md.MetricNameSelectors) == 0 {
+		return errors.New("Invalid metric declaration: no metric name selectors defined.")
+	}
 	md.metricRegexList = make([]*regexp.Regexp, len(md.MetricNameSelectors))
 	for i, selector := range md.MetricNameSelectors {
 		md.metricRegexList[i] = regexp.MustCompile(selector)
 	}
+	return
 }
 
 // Returns true if the given OTLP Metric's name matches any of the Metric Declaration's
