@@ -186,9 +186,9 @@ func TestExtractDimensions(t *testing.T) {
 			Dimensions:          tc.dimensions,
 			MetricNameSelectors: []string{"foo"},
 		}
-		err := md.Init(logger)
-		assert.Nil(t, err)
 		t.Run(tc.testName, func(t *testing.T) {
+			err := md.Init(logger)
+			assert.Nil(t, err)
 			dimensions := md.ExtractDimensions(tc.labels)
 			assertDimsEqual(t, tc.extractedDimensions, dimensions)
 		})
