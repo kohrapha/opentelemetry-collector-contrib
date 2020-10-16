@@ -66,6 +66,12 @@ func TestInit(t *testing.T) {
 	}}
 	assert.Equal(t, 1, logs.Len())
 	assert.Equal(t, expectedLogs, logs.AllUntimed())
+
+	// Test invalid metric declaration
+	md = &MetricDeclaration{}
+	err = md.Init(logger)
+	assert.NotNil(t, err)
+	assert.EqualError(t, err, "Invalid metric declaration: no metric name selectors defined.")
 }
 
 func TestMatches(t *testing.T) {
@@ -104,12 +110,6 @@ func TestMatches(t *testing.T) {
 
 	metric.SetName("accca")
 	assert.True(t, md.Matches(&metric))
-
-	// Test invalid metric declaration
-	md = &MetricDeclaration{}
-	err = md.Init(logger)
-	assert.NotNil(t, err)
-	assert.EqualError(t, err, "Invalid metric declaration: no metric name selectors defined.")
 }
 
 func TestExtractDimensions(t *testing.T) {
