@@ -246,17 +246,21 @@ func buildCWMetric(dp DataPoint, pmd *pdata.Metric, namespace string, metricSlic
 	mds := config.MetricDeclarations
 
 	labelsMap := dp.LabelsMap()
-	labels := make([]string, labelsMap.Len(), labelsMap.Len()+1)
+	labelsSlice := make([]string, labelsMap.Len(), labelsMap.Len()+1)
+	// `labels` contains label key/value pairs
+	labels := make(map[string]string, labelsMap.Len()+1)
 	// `fields` contains metric and dimensions key/value pairs
 	fields := make(map[string]interface{}, labelsMap.Len()+2)
 	idx := 0
 	labelsMap.ForEach(func(k string, v pdata.StringValue) {
 		fields[k] = v.Value()
-		labels[idx] = k
+		labels[k] = v.Value()
+		labelsSlice[idx] = k
 		idx++
 	})
 
-	// Add OTLib as an additional field
+	// Add OTLib as an additional label
+	labels[OtlibDimensionKey] = OTLib
 	fields[OtlibDimensionKey] = OTLib
 
 	// Create list of dimension sets
@@ -264,15 +268,15 @@ func buildCWMetric(dp DataPoint, pmd *pdata.Metric, namespace string, metricSlic
 	if len(mds) > 0 {
 		// Filter metric declarations and map each metric declaration to a list
 		// of dimension sets
-		dimensionsArray = processMetricDeclarations(mds, pmd, fields)
+		dimensionsArray = processMetricDeclarations(mds, pmd, labels)
 	} else {
 		// If not metric declarations defined, create a single dimension set containing
 		// the list of labels + OTLib dimension key
-		dimensionsArray = [][][]string{{append(labels, OtlibDimensionKey)}}
+		dimensionsArray = [][][]string{{append(labelsSlice, OtlibDimensionKey)}}
 	}
 
 	// Apply single/zero dimension rollup to labels
-	rollupDimensionArray := dimensionRollup(dimensionRollupOption, labels)
+	rollupDimensionArray := dimensionRollup(dimensionRollupOption, labelsSlice)
 
 	// Build list of CW Measurements
 	cwMeasurements := make([]CwMeasurement, len(dimensionsArray))
