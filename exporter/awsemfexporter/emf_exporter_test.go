@@ -253,6 +253,13 @@ func TestNewExporterWithMetricDeclarations(t *testing.T) {
 		{
 			MetricNameSelectors: nil,
 		},
+		{
+			Dimensions: [][]string{
+				{"foo"},
+				{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k"},
+			},
+			MetricNameSelectors: []string{"a"},
+		},
 	}
 	expCfg.MetricDeclarations = mds
 
@@ -265,14 +272,22 @@ func TestNewExporterWithMetricDeclarations(t *testing.T) {
 	emfExporter := exp.(*emfExporter)
 	config := emfExporter.config.(*Config)
 	// Invalid metric declaration should be filtered out
-	assert.Equal(t, 2, len(config.MetricDeclarations))
+	assert.Equal(t, 3, len(config.MetricDeclarations))
+	// Invalid dimensions (> 10 dims) should be filtered out
+	assert.Equal(t, 1, len(config.MetricDeclarations[2].Dimensions))
 
 	// Test output warning logs
-	expectedLogs := []observer.LoggedEntry{{
-		Entry:   zapcore.Entry{Level: zap.WarnLevel, Message: "Invalid metric declaration: no metric name selectors defined."},
-		Context: []zapcore.Field{},
-	}}
-	assert.Equal(t, 1, logs.Len())
+	expectedLogs := []observer.LoggedEntry{
+		{
+			Entry:   zapcore.Entry{Level: zap.WarnLevel, Message: "Dropped metric declaration. Error: Invalid metric declaration: no metric name selectors defined."},
+			Context: []zapcore.Field{},
+		},
+		{
+			Entry:   zapcore.Entry{Level: zap.WarnLevel, Message: "Dropped dimension set: > 10 dimensions specified."},
+			Context: []zapcore.Field{zap.String("dimensions", "a,b,c,d,e,f,g,h,i,j,k")},
+		},
+	}
+	assert.Equal(t, 2, logs.Len())
 	assert.Equal(t, expectedLogs, logs.AllUntimed())
 }
 

@@ -17,8 +17,10 @@ package awsemfexporter
 import (
 	"errors"
 	"regexp"
+	"strings"
 
 	"go.opentelemetry.io/collector/consumer/pdata"
+	"go.uber.org/zap"
 )
 
 // Characterizes a rule to be used to set dimensions for certain incoming metrics,
@@ -36,10 +38,23 @@ type MetricDeclaration struct {
 	metricRegexList []*regexp.Regexp
 }
 
-func (md *MetricDeclaration) Init() (err error) {
+func (md *MetricDeclaration) Init(logger *zap.Logger) (err error) {
+	// Return error if no metric name selectors are defined
 	if len(md.MetricNameSelectors) == 0 {
 		return errors.New("Invalid metric declaration: no metric name selectors defined.")
 	}
+
+	// Filter out dimension sets with more than 10 elements
+	validDims := make([][]string, 0, len(md.Dimensions))
+	for _, dimSet := range md.Dimensions {
+		if len(dimSet) <= 10 {
+			validDims = append(validDims, dimSet)
+		} else {
+			logger.Warn("Dropped dimension set: > 10 dimensions specified.", zap.String("dimensions", strings.Join(dimSet, ",")))
+		}
+	}
+	md.Dimensions = validDims
+
 	md.metricRegexList = make([]*regexp.Regexp, len(md.MetricNameSelectors))
 	for i, selector := range md.MetricNameSelectors {
 		md.metricRegexList[i] = regexp.MustCompile(selector)

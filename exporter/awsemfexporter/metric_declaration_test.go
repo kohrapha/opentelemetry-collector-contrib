@@ -19,29 +19,61 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"go.opentelemetry.io/collector/consumer/pdata"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+	"go.uber.org/zap/zaptest/observer"
 )
 
 func TestInit(t *testing.T) {
 	md := &MetricDeclaration{
 		MetricNameSelectors: []string{"a", "b", "aa"},
 	}
-	err := md.Init()
+	logger := zap.NewNop()
+	err := md.Init(logger)
 	assert.Nil(t, err)
 	assert.Equal(t, 3, len(md.metricRegexList))
 
 	md = &MetricDeclaration{
+		Dimensions: [][]string{
+			{"foo"},
+			{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j"},
+		},
 		MetricNameSelectors: []string{"a.*", "b$", "aa+"},
 	}
-	err = md.Init()
+	err = md.Init(logger)
 	assert.Nil(t, err)
 	assert.Equal(t, 3, len(md.metricRegexList))
+	assert.Equal(t, 2, len(md.Dimensions))
+
+	// Test removal of dimension sets with more than 10 elements
+	md = &MetricDeclaration{
+		Dimensions: [][]string{
+			{"foo"},
+			{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k"},
+		},
+		MetricNameSelectors: []string{"a.*", "b$", "aa+"},
+	}
+	obs, logs := observer.New(zap.WarnLevel)
+	logger = zap.New(obs)
+	err = md.Init(logger)
+	assert.Nil(t, err)
+	assert.Equal(t, 3, len(md.metricRegexList))
+	assert.Equal(t, 1, len(md.Dimensions))
+	// Check logged warning message
+	expectedLogs := []observer.LoggedEntry{{
+		Entry:   zapcore.Entry{Level: zap.WarnLevel, Message: "Dropped dimension set: > 10 dimensions specified."},
+		Context: []zapcore.Field{zap.String("dimensions", "a,b,c,d,e,f,g,h,i,j,k")},
+	}}
+	assert.Equal(t, 1, logs.Len())
+	assert.Equal(t, expectedLogs, logs.AllUntimed())
 }
 
 func TestMatches(t *testing.T) {
 	md := &MetricDeclaration{
 		MetricNameSelectors: []string{"^a+$", "^b.*$", "^ac+a$"},
 	}
-	err := md.Init()
+	logger := zap.NewNop()
+	err := md.Init(logger)
 	assert.Nil(t, err)
 
 	metric := pdata.NewMetric()
@@ -66,7 +98,7 @@ func TestMatches(t *testing.T) {
 
 	metric.SetName("c")
 	assert.False(t, md.Matches(&metric))
-	
+
 	metric.SetName("aca")
 	assert.True(t, md.Matches(&metric))
 
@@ -75,16 +107,16 @@ func TestMatches(t *testing.T) {
 
 	// Test invalid metric declaration
 	md = &MetricDeclaration{}
-	err = md.Init()
+	err = md.Init(logger)
 	assert.NotNil(t, err)
 	assert.EqualError(t, err, "Invalid metric declaration: no metric name selectors defined.")
 }
 
 func TestExtractDimensions(t *testing.T) {
-	testCases := []struct{
-		testName 			string
-		dimensions 			[][]string
-		labels 				map[string]interface{}
+	testCases := []struct {
+		testName            string
+		dimensions          [][]string
+		labels              map[string]interface{}
 		extractedDimensions [][]string
 	}{
 		{
@@ -147,13 +179,14 @@ func TestExtractDimensions(t *testing.T) {
 			nil,
 		},
 	}
+	logger := zap.NewNop()
 
 	for _, tc := range testCases {
 		md := MetricDeclaration{
-			Dimensions: tc.dimensions,
+			Dimensions:          tc.dimensions,
 			MetricNameSelectors: []string{"foo"},
 		}
-		err := md.Init()
+		err := md.Init(logger)
 		assert.Nil(t, err)
 		t.Run(tc.testName, func(t *testing.T) {
 			dimensions := md.ExtractDimensions(tc.labels)
@@ -165,27 +198,28 @@ func TestExtractDimensions(t *testing.T) {
 func TestProcessMetricDeclarations(t *testing.T) {
 	mds := []*MetricDeclaration{
 		{
-			Dimensions: [][]string{{"dim1", "dim2"}},
+			Dimensions:          [][]string{{"dim1", "dim2"}},
 			MetricNameSelectors: []string{"a", "b"},
 		},
 		{
-			Dimensions: [][]string{{"dim1"}},
+			Dimensions:          [][]string{{"dim1"}},
 			MetricNameSelectors: []string{"aa", "b"},
 		},
 		{
-			Dimensions: [][]string{{"dim1", "dim2"}, {"dim1"}},
+			Dimensions:          [][]string{{"dim1", "dim2"}, {"dim1"}},
 			MetricNameSelectors: []string{"a"},
 		},
 	}
+	logger := zap.NewNop()
 	for _, decl := range mds {
-		err := decl.Init()
+		err := decl.Init(logger)
 		assert.Nil(t, err)
 	}
-	testCases := []struct{
-		testName 		string
-		metricName		string
-		labels			map[string]interface{}
-		dimensionsList 	[][][]string
+	testCases := []struct {
+		testName       string
+		metricName     string
+		labels         map[string]interface{}
+		dimensionsList [][][]string
 	}{
 		{
 			"Matching multiple dimensions 1",
