@@ -116,13 +116,13 @@ func TestExtractDimensions(t *testing.T) {
 	testCases := []struct {
 		testName            string
 		dimensions          [][]string
-		labels              map[string]interface{}
+		labels              map[string]string
 		extractedDimensions [][]string
 	}{
 		{
 			"matches single dimension set exactly",
 			[][]string{{"a", "b"}},
-			map[string]interface{}{
+			map[string]string{
 				"a": "foo",
 				"b": "bar",
 			},
@@ -131,7 +131,7 @@ func TestExtractDimensions(t *testing.T) {
 		{
 			"matches subset of single dimension set",
 			[][]string{{"a"}},
-			map[string]interface{}{
+			map[string]string{
 				"a": "foo",
 				"b": "bar",
 			},
@@ -140,7 +140,7 @@ func TestExtractDimensions(t *testing.T) {
 		{
 			"does not match single dimension set",
 			[][]string{{"a", "b"}},
-			map[string]interface{}{
+			map[string]string{
 				"b": "bar",
 			},
 			nil,
@@ -148,7 +148,7 @@ func TestExtractDimensions(t *testing.T) {
 		{
 			"matches multiple dimension sets",
 			[][]string{{"a", "b"}, {"a"}},
-			map[string]interface{}{
+			map[string]string{
 				"a": "foo",
 				"b": "bar",
 			},
@@ -157,7 +157,7 @@ func TestExtractDimensions(t *testing.T) {
 		{
 			"matches one of multiple dimension sets",
 			[][]string{{"a", "b"}, {"a"}},
-			map[string]interface{}{
+			map[string]string{
 				"a": "foo",
 			},
 			[][]string{{"a"}},
@@ -165,7 +165,7 @@ func TestExtractDimensions(t *testing.T) {
 		{
 			"no dimensions",
 			[][]string{},
-			map[string]interface{}{
+			map[string]string{
 				"a": "foo",
 			},
 			nil,
@@ -173,7 +173,7 @@ func TestExtractDimensions(t *testing.T) {
 		{
 			"empty dimension set",
 			[][]string{{}},
-			map[string]interface{}{
+			map[string]string{
 				"a": "foo",
 			},
 			nil,
@@ -218,13 +218,13 @@ func TestProcessMetricDeclarations(t *testing.T) {
 	testCases := []struct {
 		testName       string
 		metricName     string
-		labels         map[string]interface{}
+		labels         map[string]string
 		dimensionsList [][][]string
 	}{
 		{
 			"Matching multiple dimensions 1",
 			"a",
-			map[string]interface{}{
+			map[string]string{
 				"dim1": "foo",
 				"dim2": "bar",
 			},
@@ -236,7 +236,7 @@ func TestProcessMetricDeclarations(t *testing.T) {
 		{
 			"Matching multiple dimensions 2",
 			"b",
-			map[string]interface{}{
+			map[string]string{
 				"dim1": "foo",
 				"dim2": "bar",
 			},
@@ -248,7 +248,7 @@ func TestProcessMetricDeclarations(t *testing.T) {
 		{
 			"Match single dimension set",
 			"a",
-			map[string]interface{}{
+			map[string]string{
 				"dim1": "foo",
 			},
 			[][][]string{
@@ -258,7 +258,7 @@ func TestProcessMetricDeclarations(t *testing.T) {
 		{
 			"No matching dimension set",
 			"a",
-			map[string]interface{}{
+			map[string]string{
 				"dim2": "bar",
 			},
 			nil,
@@ -266,7 +266,7 @@ func TestProcessMetricDeclarations(t *testing.T) {
 		{
 			"No matching metric name",
 			"c",
-			map[string]interface{}{
+			map[string]string{
 				"dim1": "foo",
 			},
 			nil,
