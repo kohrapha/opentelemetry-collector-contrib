@@ -247,7 +247,508 @@ func TestTranslateCWMetricToEMF(t *testing.T) {
 }
 
 func TestGetCWMetrics(t *testing.T) {
+	namespace := "Namespace"
+	OTelLib := "OTelLib"
+	instrumentationLibName := "InstrLibName"
 
+	testCases := []struct {
+		testName string
+		metric   *metricspb.Metric
+		expected []*CWMetrics
+	}{
+		{
+			"Int gauge",
+			&metricspb.Metric{
+				MetricDescriptor: &metricspb.MetricDescriptor{
+					Name: "foo",
+					Type: metricspb.MetricDescriptor_GAUGE_INT64,
+					Unit: "Count",
+					LabelKeys: []*metricspb.LabelKey{
+						{Key: "label1"},
+						{Key: "label2"},
+					},
+				},
+				Timeseries: []*metricspb.TimeSeries{
+					{
+						LabelValues: []*metricspb.LabelValue{
+							{Value: "value1", HasValue: true},
+							{Value: "value2", HasValue: true},
+						},
+						Points: []*metricspb.Point{
+							{
+								Value: &metricspb.Point_Int64Value{
+									Int64Value: 1,
+								},
+							},
+						},
+					},
+					{
+						LabelValues: []*metricspb.LabelValue{
+							{HasValue: false},
+							{Value: "value2", HasValue: true},
+						},
+						Points: []*metricspb.Point{
+							{
+								Value: &metricspb.Point_Int64Value{
+									Int64Value: 3,
+								},
+							},
+						},
+					},
+				},
+			},
+			[]*CWMetrics{
+				{
+					Measurements: []CwMeasurement{
+						{
+							Namespace: namespace,
+							Dimensions: [][]string{
+								{"label1", "label2", OTelLib},
+							},
+							Metrics: []map[string]string{
+								{"Name": "foo", "Unit": "Count"},
+							},
+						},
+					},
+					Fields: map[string]interface{}{
+						OTelLib:  instrumentationLibName,
+						"foo":    int64(1),
+						"label1": "value1",
+						"label2": "value2",
+					},
+				},
+				{
+					Measurements: []CwMeasurement{
+						{
+							Namespace: namespace,
+							Dimensions: [][]string{
+								{"label2", OTelLib},
+							},
+							Metrics: []map[string]string{
+								{"Name": "foo", "Unit": "Count"},
+							},
+						},
+					},
+					Fields: map[string]interface{}{
+						OTelLib:  instrumentationLibName,
+						"foo":    int64(3),
+						"label2": "value2",
+					},
+				},
+			},
+		},
+		{
+			"Double gauge",
+			&metricspb.Metric{
+				MetricDescriptor: &metricspb.MetricDescriptor{
+					Name: "foo",
+					Type: metricspb.MetricDescriptor_GAUGE_DOUBLE,
+					Unit: "Count",
+					LabelKeys: []*metricspb.LabelKey{
+						{Key: "label1"},
+						{Key: "label2"},
+					},
+				},
+				Timeseries: []*metricspb.TimeSeries{
+					{
+						LabelValues: []*metricspb.LabelValue{
+							{Value: "value1", HasValue: true},
+							{Value: "value2", HasValue: true},
+						},
+						Points: []*metricspb.Point{
+							{
+								Value: &metricspb.Point_DoubleValue{
+									DoubleValue: 0.1,
+								},
+							},
+						},
+					},
+					{
+						LabelValues: []*metricspb.LabelValue{
+							{HasValue: false},
+							{Value: "value2", HasValue: true},
+						},
+						Points: []*metricspb.Point{
+							{
+								Value: &metricspb.Point_DoubleValue{
+									DoubleValue: 0.3,
+								},
+							},
+						},
+					},
+				},
+			},
+			[]*CWMetrics{
+				{
+					Measurements: []CwMeasurement{
+						{
+							Namespace: namespace,
+							Dimensions: [][]string{
+								{"label1", "label2", OTelLib},
+							},
+							Metrics: []map[string]string{
+								{"Name": "foo", "Unit": "Count"},
+							},
+						},
+					},
+					Fields: map[string]interface{}{
+						OTelLib:  instrumentationLibName,
+						"foo":    0.1,
+						"label1": "value1",
+						"label2": "value2",
+					},
+				},
+				{
+					Measurements: []CwMeasurement{
+						{
+							Namespace: namespace,
+							Dimensions: [][]string{
+								{"label2", OTelLib},
+							},
+							Metrics: []map[string]string{
+								{"Name": "foo", "Unit": "Count"},
+							},
+						},
+					},
+					Fields: map[string]interface{}{
+						OTelLib:  instrumentationLibName,
+						"foo":    0.3,
+						"label2": "value2",
+					},
+				},
+			},
+		},
+		{
+			"Int sum",
+			&metricspb.Metric{
+				MetricDescriptor: &metricspb.MetricDescriptor{
+					Name: "foo",
+					Type: metricspb.MetricDescriptor_CUMULATIVE_INT64,
+					Unit: "Count",
+					LabelKeys: []*metricspb.LabelKey{
+						{Key: "label1"},
+						{Key: "label2"},
+					},
+				},
+				Timeseries: []*metricspb.TimeSeries{
+					{
+						LabelValues: []*metricspb.LabelValue{
+							{Value: "value1", HasValue: true},
+							{Value: "value2", HasValue: true},
+						},
+						Points: []*metricspb.Point{
+							{
+								Value: &metricspb.Point_Int64Value{
+									Int64Value: 1,
+								},
+							},
+						},
+					},
+					{
+						LabelValues: []*metricspb.LabelValue{
+							{HasValue: false},
+							{Value: "value2", HasValue: true},
+						},
+						Points: []*metricspb.Point{
+							{
+								Value: &metricspb.Point_Int64Value{
+									Int64Value: 3,
+								},
+							},
+						},
+					},
+				},
+			},
+			[]*CWMetrics{
+				{
+					Measurements: []CwMeasurement{
+						{
+							Namespace: namespace,
+							Dimensions: [][]string{
+								{"label1", "label2", OTelLib},
+							},
+							Metrics: []map[string]string{
+								{"Name": "foo", "Unit": "Count"},
+							},
+						},
+					},
+					Fields: map[string]interface{}{
+						OTelLib:  instrumentationLibName,
+						"foo":    0,
+						"label1": "value1",
+						"label2": "value2",
+					},
+				},
+				{
+					Measurements: []CwMeasurement{
+						{
+							Namespace: namespace,
+							Dimensions: [][]string{
+								{"label2", OTelLib},
+							},
+							Metrics: []map[string]string{
+								{"Name": "foo", "Unit": "Count"},
+							},
+						},
+					},
+					Fields: map[string]interface{}{
+						OTelLib:  instrumentationLibName,
+						"foo":    0,
+						"label2": "value2",
+					},
+				},
+			},
+		},
+		{
+			"Double sum",
+			&metricspb.Metric{
+				MetricDescriptor: &metricspb.MetricDescriptor{
+					Name: "foo",
+					Type: metricspb.MetricDescriptor_CUMULATIVE_DOUBLE,
+					Unit: "Count",
+					LabelKeys: []*metricspb.LabelKey{
+						{Key: "label1"},
+						{Key: "label2"},
+					},
+				},
+				Timeseries: []*metricspb.TimeSeries{
+					{
+						LabelValues: []*metricspb.LabelValue{
+							{Value: "value1", HasValue: true},
+							{Value: "value2", HasValue: true},
+						},
+						Points: []*metricspb.Point{
+							{
+								Value: &metricspb.Point_DoubleValue{
+									DoubleValue: 0.1,
+								},
+							},
+						},
+					},
+					{
+						LabelValues: []*metricspb.LabelValue{
+							{HasValue: false},
+							{Value: "value2", HasValue: true},
+						},
+						Points: []*metricspb.Point{
+							{
+								Value: &metricspb.Point_DoubleValue{
+									DoubleValue: 0.3,
+								},
+							},
+						},
+					},
+				},
+			},
+			[]*CWMetrics{
+				{
+					Measurements: []CwMeasurement{
+						{
+							Namespace: namespace,
+							Dimensions: [][]string{
+								{"label1", "label2", OTelLib},
+							},
+							Metrics: []map[string]string{
+								{"Name": "foo", "Unit": "Count"},
+							},
+						},
+					},
+					Fields: map[string]interface{}{
+						OTelLib:  instrumentationLibName,
+						"foo":    0,
+						"label1": "value1",
+						"label2": "value2",
+					},
+				},
+				{
+					Measurements: []CwMeasurement{
+						{
+							Namespace: namespace,
+							Dimensions: [][]string{
+								{"label2", OTelLib},
+							},
+							Metrics: []map[string]string{
+								{"Name": "foo", "Unit": "Count"},
+							},
+						},
+					},
+					Fields: map[string]interface{}{
+						OTelLib:  instrumentationLibName,
+						"foo":    0,
+						"label2": "value2",
+					},
+				},
+			},
+		},
+		{
+			"Double histogram",
+			&metricspb.Metric{
+				MetricDescriptor: &metricspb.MetricDescriptor{
+					Name: "foo",
+					Type: metricspb.MetricDescriptor_CUMULATIVE_DISTRIBUTION,
+					Unit: "Seconds",
+					LabelKeys: []*metricspb.LabelKey{
+						{Key: "label1"},
+						{Key: "label2"},
+					},
+				},
+				Timeseries: []*metricspb.TimeSeries{
+					{
+						LabelValues: []*metricspb.LabelValue{
+							{Value: "value1", HasValue: true},
+							{Value: "value2", HasValue: true},
+						},
+						Points: []*metricspb.Point{
+							{
+								Value: &metricspb.Point_DistributionValue{
+									DistributionValue: &metricspb.DistributionValue{
+										Sum:   15.0,
+										Count: 5,
+										BucketOptions: &metricspb.DistributionValue_BucketOptions{
+											Type: &metricspb.DistributionValue_BucketOptions_Explicit_{
+												Explicit: &metricspb.DistributionValue_BucketOptions_Explicit{
+													Bounds: []float64{0, 10},
+												},
+											},
+										},
+										Buckets: []*metricspb.DistributionValue_Bucket{
+											{
+												Count: 0,
+											},
+											{
+												Count: 4,
+											},
+											{
+												Count: 1,
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+					{
+						LabelValues: []*metricspb.LabelValue{
+							{HasValue: false},
+							{Value: "value2", HasValue: true},
+						},
+						Points: []*metricspb.Point{
+							{
+								Value: &metricspb.Point_DistributionValue{
+									DistributionValue: &metricspb.DistributionValue{
+										Sum:   35.0,
+										Count: 18,
+										BucketOptions: &metricspb.DistributionValue_BucketOptions{
+											Type: &metricspb.DistributionValue_BucketOptions_Explicit_{
+												Explicit: &metricspb.DistributionValue_BucketOptions_Explicit{
+													Bounds: []float64{0, 10},
+												},
+											},
+										},
+										Buckets: []*metricspb.DistributionValue_Bucket{
+											{
+												Count: 5,
+											},
+											{
+												Count: 6,
+											},
+											{
+												Count: 7,
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			[]*CWMetrics{
+				{
+					Measurements: []CwMeasurement{
+						{
+							Namespace: namespace,
+							Dimensions: [][]string{
+								{"label1", "label2", OTelLib},
+							},
+							Metrics: []map[string]string{
+								{"Name": "foo", "Unit": "Seconds"},
+							},
+						},
+					},
+					Fields: map[string]interface{}{
+						OTelLib: instrumentationLibName,
+						"foo": &CWMetricStats{
+							Min:   0,
+							Max:   10,
+							Sum:   15.0,
+							Count: 5,
+						},
+						"label1": "value1",
+						"label2": "value2",
+					},
+				},
+				{
+					Measurements: []CwMeasurement{
+						{
+							Namespace: namespace,
+							Dimensions: [][]string{
+								{"label2", OTelLib},
+							},
+							Metrics: []map[string]string{
+								{"Name": "foo", "Unit": "Seconds"},
+							},
+						},
+					},
+					Fields: map[string]interface{}{
+						OTelLib: instrumentationLibName,
+						"foo": &CWMetricStats{
+							Min:   0,
+							Max:   10,
+							Sum:   35.0,
+							Count: 18,
+						},
+						"label2": "value2",
+					},
+				},
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.testName, func(t *testing.T) {
+			oc := consumerdata.MetricsData{
+				Node: &commonpb.Node{},
+				Resource: &resourcepb.Resource{
+					Labels: map[string]string{
+						conventions.AttributeServiceName:      "myServiceName",
+						conventions.AttributeServiceNamespace: "myServiceNS",
+					},
+				},
+				Metrics: []*metricspb.Metric{tc.metric},
+			}
+
+			// Retrieve *pdata.Metric
+			rms := internaldata.OCToMetrics(oc).ResourceMetrics()
+			assert.Equal(t, 1, rms.Len())
+			ilms := rms.At(0).InstrumentationLibraryMetrics()
+			assert.Equal(t, 1, ilms.Len())
+			metrics := ilms.At(0).Metrics()
+			assert.Equal(t, 1, metrics.Len())
+			metric := metrics.At(0)
+
+			cwMetrics := getCWMetrics(&metric, namespace, instrumentationLibName, "")
+			assert.Equal(t, len(tc.expected), len(cwMetrics))
+
+			for i, expected := range tc.expected {
+				cwMetric := cwMetrics[i]
+				assert.Equal(t, len(expected.Measurements), len(cwMetric.Measurements))
+				assert.Equal(t, expected.Measurements, cwMetric.Measurements)
+				assert.Equal(t, len(expected.Fields), len(cwMetric.Fields))
+				assert.Equal(t, expected.Fields, cwMetric.Fields)
+			}
+		})
+	}
 }
 
 func TestCreateDimensions(t *testing.T) {
