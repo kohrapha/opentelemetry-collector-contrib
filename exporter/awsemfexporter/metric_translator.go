@@ -299,10 +299,10 @@ func createDimensions(dp DataPoint, instrumentationLibName string, dimensionRoll
 	})
 	// Add OTel instrumentation lib name as an additional dimension if it is defined
 	if instrumentationLibName != noInstrumentationLibraryName {
-		fieldsPairs[OTellibDimensionKey] = instrumentationLibName
-		dimensionArray = append(dimensionArray, append(dimensionSlice, OTellibDimensionKey))
+		fields[OTellibDimensionKey] = instrumentationLibName
+		dimensions = append(dimensions, append(dimensionSlice, OTellibDimensionKey))
 	} else {
-		dimensionArray = append(dimensionArray, dimensionSlice)
+		dimensions = append(dimensions, dimensionSlice)
 	}
 
 	// EMF dimension attr takes list of list on dimensions. Including single/zero dimension rollup

@@ -251,7 +251,7 @@ func TestGetCWMetrics(t *testing.T) {
 }
 
 func TestCreateDimensions(t *testing.T) {
-	OTLib := "OTLib"
+	OTelLib := "OTelLib"
 	testCases := []struct {
 		testName string
 		labels   map[string]string
@@ -261,26 +261,25 @@ func TestCreateDimensions(t *testing.T) {
 			"single label",
 			map[string]string{"a": "foo"},
 			[][]string{
-				{"a", OTLib},
-				{OTLib},
-				{OTLib, "a"},
+				{"a", OTelLib},
+				{OTelLib},
 			},
 		},
 		{
 			"multiple labels",
 			map[string]string{"a": "foo", "b": "bar"},
 			[][]string{
-				{"a", "b", OTLib},
-				{OTLib},
-				{OTLib, "a"},
-				{OTLib, "b"},
+				{"a", "b", OTelLib},
+				{OTelLib},
+				{OTelLib, "a"},
+				{OTelLib, "b"},
 			},
 		},
 		{
 			"no labels",
 			map[string]string{},
 			[][]string{
-				{OTLib},
+				{OTelLib},
 			},
 		},
 	}
@@ -299,7 +298,7 @@ func TestCreateDimensions(t *testing.T) {
 		dp := pdata.NewIntDataPoint()
 		dp.InitEmpty()
 		dp.LabelsMap().InitFromMap(tc.labels)
-		dimensions, fields := createDimensions(dp, OTLib, ZeroAndSingleDimensionRollup)
+		dimensions, fields := createDimensions(dp, OTelLib, ZeroAndSingleDimensionRollup)
 
 		// Sort slice for equality check
 		sort.Slice(tc.dims, sliceSorter(tc.dims))
@@ -311,7 +310,7 @@ func TestCreateDimensions(t *testing.T) {
 		for k, v := range tc.labels {
 			expectedFields[k] = v
 		}
-		expectedFields[OtlibDimensionKey] = OTLib
+		expectedFields[OTellibDimensionKey] = OTelLib
 
 		assert.Equal(t, expectedFields, fields)
 	}
