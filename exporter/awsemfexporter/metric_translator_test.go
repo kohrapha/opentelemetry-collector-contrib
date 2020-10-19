@@ -751,6 +751,177 @@ func TestGetCWMetrics(t *testing.T) {
 	}
 }
 
+func TestBuildCWMetric(t *testing.T) {
+	namespace := "Namespace"
+	instrLibName := "InstrLibName"
+	OTelLib := "OTelLib"
+	metricSlice := []map[string]string{
+		map[string]string{
+			"Name": "foo",
+			"Unit": "",
+		},
+	}
+	metric := pdata.NewMetric()
+	metric.InitEmpty()
+	metric.SetName("foo")
+
+	t.Run("Int gauge", func(t *testing.T) {
+		metric.SetDataType(pdata.MetricDataTypeIntGauge)
+		dp := pdata.NewIntDataPoint()
+		dp.InitEmpty()
+		dp.LabelsMap().InitFromMap(map[string]string{
+			"label1": "value1",
+		})
+		dp.SetValue(int64(-17))
+
+		cwMetric := buildCWMetric(dp, &metric, namespace, metricSlice, instrLibName, "")
+
+		assert.NotNil(t, cwMetric)
+		assert.Equal(t, 1, len(cwMetric.Measurements))
+		expectedMeasurement := CwMeasurement{
+			Namespace: namespace,
+			Dimensions: [][]string{{"label1", OTelLib}},
+			Metrics: metricSlice,
+		}
+		assert.Equal(t, expectedMeasurement, cwMetric.Measurements[0])
+		expectedFields := map[string]interface{}{
+			OTelLib:  instrLibName,
+			"foo":    int64(-17),
+			"label1": "value1",
+		}
+		assert.Equal(t, expectedFields, cwMetric.Fields)
+	})
+
+	t.Run("Double gauge", func(t *testing.T) {
+		metric.SetDataType(pdata.MetricDataTypeDoubleGauge)
+		dp := pdata.NewDoubleDataPoint()
+		dp.InitEmpty()
+		dp.LabelsMap().InitFromMap(map[string]string{
+			"label1": "value1",
+		})
+		dp.SetValue(0.3)
+
+		cwMetric := buildCWMetric(dp, &metric, namespace, metricSlice, instrLibName, "")
+
+		assert.NotNil(t, cwMetric)
+		assert.Equal(t, 1, len(cwMetric.Measurements))
+		expectedMeasurement := CwMeasurement{
+			Namespace: namespace,
+			Dimensions: [][]string{{"label1", OTelLib}},
+			Metrics: metricSlice,
+		}
+		assert.Equal(t, expectedMeasurement, cwMetric.Measurements[0])
+		expectedFields := map[string]interface{}{
+			OTelLib:  instrLibName,
+			"foo":    0.3,
+			"label1": "value1",
+		}
+		assert.Equal(t, expectedFields, cwMetric.Fields)
+	})
+
+	t.Run("Int sum", func(t *testing.T) {
+		metric.SetDataType(pdata.MetricDataTypeIntSum)
+		metric.IntSum().InitEmpty()
+		metric.IntSum().SetAggregationTemporality(pdata.AggregationTemporalityCumulative)
+		dp := pdata.NewIntDataPoint()
+		dp.InitEmpty()
+		dp.LabelsMap().InitFromMap(map[string]string{
+			"label1": "value1",
+		})
+		dp.SetValue(int64(-17))
+
+		cwMetric := buildCWMetric(dp, &metric, namespace, metricSlice, instrLibName, "")
+
+		assert.NotNil(t, cwMetric)
+		assert.Equal(t, 1, len(cwMetric.Measurements))
+		expectedMeasurement := CwMeasurement{
+			Namespace: namespace,
+			Dimensions: [][]string{{"label1", OTelLib}},
+			Metrics: metricSlice,
+		}
+		assert.Equal(t, expectedMeasurement, cwMetric.Measurements[0])
+		expectedFields := map[string]interface{}{
+			OTelLib:  instrLibName,
+			"foo":    0,
+			"label1": "value1",
+		}
+		assert.Equal(t, expectedFields, cwMetric.Fields)
+	})
+
+	t.Run("Double sum", func(t *testing.T) {
+		metric.SetDataType(pdata.MetricDataTypeDoubleSum)
+		metric.DoubleSum().InitEmpty()
+		metric.DoubleSum().SetAggregationTemporality(pdata.AggregationTemporalityCumulative)
+		dp := pdata.NewDoubleDataPoint()
+		dp.InitEmpty()
+		dp.LabelsMap().InitFromMap(map[string]string{
+			"label1": "value1",
+		})
+		dp.SetValue(0.3)
+
+		cwMetric := buildCWMetric(dp, &metric, namespace, metricSlice, instrLibName, "")
+
+		assert.NotNil(t, cwMetric)
+		assert.Equal(t, 1, len(cwMetric.Measurements))
+		expectedMeasurement := CwMeasurement{
+			Namespace: namespace,
+			Dimensions: [][]string{{"label1", OTelLib}},
+			Metrics: metricSlice,
+		}
+		assert.Equal(t, expectedMeasurement, cwMetric.Measurements[0])
+		expectedFields := map[string]interface{}{
+			OTelLib:  instrLibName,
+			"foo":    0,
+			"label1": "value1",
+		}
+		assert.Equal(t, expectedFields, cwMetric.Fields)
+	})
+
+	t.Run("Double histogram", func(t *testing.T) {
+		metric.SetDataType(pdata.MetricDataTypeDoubleHistogram)
+		dp := pdata.NewDoubleHistogramDataPoint()
+		dp.InitEmpty()
+		dp.LabelsMap().InitFromMap(map[string]string{
+			"label1": "value1",
+		})
+		dp.SetCount(uint64(17))
+		dp.SetSum(float64(17.13))
+		dp.SetBucketCounts([]uint64{1, 2, 3})
+		dp.SetExplicitBounds([]float64{1, 2, 3})
+
+		cwMetric := buildCWMetric(dp, &metric, namespace, metricSlice, instrLibName, "")
+
+		assert.NotNil(t, cwMetric)
+		assert.Equal(t, 1, len(cwMetric.Measurements))
+		expectedMeasurement := CwMeasurement{
+			Namespace: namespace,
+			Dimensions: [][]string{{"label1", OTelLib}},
+			Metrics: metricSlice,
+		}
+		assert.Equal(t, expectedMeasurement, cwMetric.Measurements[0])
+		expectedFields := map[string]interface{}{
+			OTelLib:  instrLibName,
+			"foo":    &CWMetricStats{
+				Min:   1,
+				Max:   3,
+				Sum:   17.13,
+				Count: 17,
+			},
+			"label1": "value1",
+		}
+		assert.Equal(t, expectedFields, cwMetric.Fields)
+	})
+	
+	t.Run("Invalid datapoint type", func(t *testing.T) {
+		metric.SetDataType(pdata.MetricDataTypeIntGauge)
+		dp := pdata.NewIntHistogramDataPoint()
+		dp.InitEmpty()
+
+		cwMetric := buildCWMetric(dp, &metric, namespace, metricSlice, instrLibName, "")
+		assert.Nil(t, cwMetric)
+	})
+}
+
 func TestCreateDimensions(t *testing.T) {
 	OTelLib := "OTelLib"
 	testCases := []struct {
