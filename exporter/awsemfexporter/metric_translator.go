@@ -277,7 +277,11 @@ func buildCWMetric(dp DataPoint, pmd *pdata.Metric, namespace string, metricSlic
 		// If no metric declarations defined and OTel instrumentation lib name is defined,
 		// create a single dimension set containing the list of labels +
 		// instrumentationLibName dimension key
-		dimensionsArray = [][][]string{{append(labelsSlice, OtlibDimensionKey)}}
+		dimensionsArray = [][][]string{{append(labelsSlice, OTellibDimensionKey)}}
+	} else {
+		// If no metric declarations or OTel instrumentation lib name defined,
+		// create a single dimension set containing only label names
+		dimensionsArray = [][][]string{{labelsSlice}}
 	}
 
 	// Apply single/zero dimension rollup to labels
