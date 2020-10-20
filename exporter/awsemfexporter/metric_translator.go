@@ -261,9 +261,11 @@ func buildCWMetric(dp DataPoint, pmd *pdata.Metric, namespace string, metricSlic
 		idx++
 	})
 
-	// Add instrumentation library name as an additional label
-	labels[OTellibDimensionKey] = instrumentationLibName
-	fields[OTellibDimensionKey] = instrumentationLibName
+	// Add OTel instrumentation lib name as an additional dimension if it is defined
+	if instrumentationLibName != noInstrumentationLibraryName {
+		labels[OTellibDimensionKey] = instrumentationLibName
+		fields[OTellibDimensionKey] = instrumentationLibName
+	}
 
 	// Create list of dimension sets
 	var dimensionsArray [][][]string
@@ -271,10 +273,15 @@ func buildCWMetric(dp DataPoint, pmd *pdata.Metric, namespace string, metricSlic
 		// Filter metric declarations and map each metric declaration to a list
 		// of dimension sets
 		dimensionsArray = processMetricDeclarations(mds, pmd, labels)
-	} else {
-		// If not metric declarations defined, create a single dimension set containing
-		// the list of labels + OTLib dimension key
+	} else if instrumentationLibName != noInstrumentationLibraryName {
+		// If no metric declarations defined and OTel instrumentation lib name is defined,
+		// create a single dimension set containing the list of labels +
+		// instrumentationLibName dimension key
 		dimensionsArray = [][][]string{{append(labelsSlice, OTellibDimensionKey)}}
+	} else {
+		// If no metric declarations or OTel instrumentation lib name defined,
+		// create a single dimension set containing only label names
+		dimensionsArray = [][][]string{{labelsSlice}}
 	}
 
 	// Apply single/zero dimension rollup to labels
