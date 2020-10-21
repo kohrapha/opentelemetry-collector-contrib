@@ -338,14 +338,14 @@ func TestTranslateOtToCWMetricWithFiltering(t *testing.T) {
 	logger := zap.NewNop()
 
 	for _, tc := range testCases {
-		md := MetricDeclaration{
+		m := MetricDeclaration{
 			Dimensions:          [][]string{{"isItAnError", "spanName"}},
 			MetricNameSelectors: tc.metricNameSelectors,
 		}
 		config := &Config{
 			Namespace:             "",
 			DimensionRollupOption: ZeroAndSingleDimensionRollup,
-			MetricDeclarations:    []*MetricDeclaration{&md},
+			MetricDeclarations:    []*MetricDeclaration{&m},
 		}
 		t.Run(tc.testName, func(t *testing.T) {
 			err := m.Init(logger)
