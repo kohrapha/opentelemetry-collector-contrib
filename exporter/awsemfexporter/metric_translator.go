@@ -134,7 +134,7 @@ func TranslateOtToCWMetric(rm *pdata.ResourceMetrics, dimensionRollupOption stri
 func batchCWMetrics(cwMetricList []*CWMetrics, groupedCWMetricMap map[string]*GroupedCWMetric, cwMetricsMap map[string]*CWMetrics) {
 	for _, i := range cwMetricList {
 		if len(i.Measurements[0].Dimensions[0]) > 0 {
-			var key = strings.Join(i.Measurements[0].Dimensions[0],"")
+			key := strings.Join(i.Measurements[0].Dimensions[0], "")
 			if _, ok := cwMetricsMap[key]; ok {
 				for _, v := range i.Measurements[0].Metrics {
 					groupedCWMetricMap[key].Metrics[v["Name"]] = i.Fields[v["Name"]]
