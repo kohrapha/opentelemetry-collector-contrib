@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// +build !windows
-
 package datadogexporter
 
 import (
@@ -23,12 +21,16 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/DataDog/datadog-agent/pkg/trace/pb"
+	"github.com/DataDog/datadog-agent/pkg/trace/exportable/pb"
 	"go.opencensus.io/trace"
 	"go.opentelemetry.io/collector/consumer/pdata"
 	"go.opentelemetry.io/collector/translator/conventions"
 	tracetranslator "go.opentelemetry.io/collector/translator/trace"
+	"go.uber.org/zap"
 	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/ext"
+
+	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/datadogexporter/config"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/datadogexporter/metadata"
 )
 
 // codeDetails specifies information about a trace status code.
@@ -67,10 +69,11 @@ var statusCodes = map[int32]codeDetails{
 }
 
 // converts Traces into an array of datadog trace payloads grouped by env
-func ConvertToDatadogTd(td pdata.Traces, cfg *Config, globalTags []string) ([]*pb.TracePayload, error) {
+func ConvertToDatadogTd(td pdata.Traces, cfg *config.Config, globalTags []string) ([]*pb.TracePayload, error) {
 	// get hostname tag
 	// this is getting abstracted out to config
-	hostname := *GetHost(cfg)
+	// TODO pass logger here once traces code stabilizes
+	hostname := *metadata.GetHost(zap.NewNop(), cfg)
 
 	// TODO:
 	// do we apply other global tags, like version+service, to every span or only root spans of a service
@@ -126,7 +129,7 @@ func AggregateTracePayloadsByEnv(tracePayloads []*pb.TracePayload) []*pb.TracePa
 }
 
 // converts a Trace's resource spans into a trace payload
-func resourceSpansToDatadogSpans(rs pdata.ResourceSpans, hostname string, cfg *Config, globalTags []string) (pb.TracePayload, error) {
+func resourceSpansToDatadogSpans(rs pdata.ResourceSpans, hostname string, cfg *config.Config, globalTags []string) (pb.TracePayload, error) {
 	// get env tag
 	env := cfg.Env
 
@@ -208,7 +211,7 @@ func resourceSpansToDatadogSpans(rs pdata.ResourceSpans, hostname string, cfg *C
 func spanToDatadogSpan(s pdata.Span,
 	serviceName string,
 	datadogTags map[string]string,
-	cfg *Config,
+	cfg *config.Config,
 	globalTags []string,
 ) (*pb.Span, error) {
 	// otel specification resource service.name takes precedence
@@ -379,9 +382,9 @@ func attributeMapToStringMap(attrMap pdata.AttributeMap) map[string]string {
 func spanKindToDatadogType(kind pdata.SpanKind) string {
 	switch kind {
 	case pdata.SpanKindCLIENT:
-		return "client"
+		return "http"
 	case pdata.SpanKindSERVER:
-		return "server"
+		return "web"
 	default:
 		return "custom"
 	}
@@ -445,18 +448,18 @@ func getDatadogSpanName(s pdata.Span, datadogTags map[string]string) string {
 	// The spec has changed over time and, depending on the original exporter, IL Name could represented a few different ways
 	// so we try to account for all permutations
 	if ilnOtlp, okOtlp := datadogTags[tracetranslator.TagInstrumentationName]; okOtlp {
-		return fmt.Sprintf("%s.%s", ilnOtlp, s.Kind())
+		return strings.ReplaceAll(fmt.Sprintf("%s.%s", ilnOtlp, s.Kind()), "::", "_")
 	}
 
 	if ilnOtelCur, okOtelCur := datadogTags[currentILNameTag]; okOtelCur {
-		return fmt.Sprintf("%s.%s", ilnOtelCur, s.Kind())
+		return strings.ReplaceAll(fmt.Sprintf("%s.%s", ilnOtelCur, s.Kind()), "::", "_")
 	}
 
 	if ilnOtelOld, okOtelOld := datadogTags[oldILNameTag]; okOtelOld {
-		return fmt.Sprintf("%s.%s", ilnOtelOld, s.Kind())
+		return strings.ReplaceAll(fmt.Sprintf("%s.%s", ilnOtelOld, s.Kind()), "::", "_")
 	}
 
-	return fmt.Sprintf("%s.%s", "opentelemetry", s.Kind())
+	return strings.ReplaceAll(fmt.Sprintf("%s.%s", "opentelemetry", s.Kind()), "::", "_")
 }
 
 func getDatadogResourceName(s pdata.Span, datadogTags map[string]string) string {

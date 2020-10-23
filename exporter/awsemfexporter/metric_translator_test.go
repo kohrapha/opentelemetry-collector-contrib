@@ -33,6 +33,25 @@ import (
 	"go.opentelemetry.io/collector/translator/internaldata"
 )
 
+// Asserts whether dimension sets are equal (i.e. has same sets of dimensions)
+func assertDimsEqual(t *testing.T, expected, actual [][]string) {
+	// Convert to string for easier sorting
+	expectedStringified := make([]string, len(expected))
+	actualStringified := make([]string, len(actual))
+	for i, v := range expected {
+		sort.Strings(v)
+		expectedStringified[i] = strings.Join(v, ",")
+	}
+	for i, v := range actual {
+		sort.Strings(v)
+		actualStringified[i] = strings.Join(v, ",")
+	}
+	// Sort across dimension sets for equality checking
+	sort.Strings(expectedStringified)
+	sort.Strings(actualStringified)
+	assert.Equal(t, expectedStringified, actualStringified)
+}
+
 func TestTranslateOtToCWMetricWithInstrLibrary(t *testing.T) {
 
 	md := createMetricTestData()
@@ -756,7 +775,7 @@ func TestBuildCWMetric(t *testing.T) {
 	instrLibName := "InstrLibName"
 	OTelLib := "OTelLib"
 	metricSlice := []map[string]string{
-		map[string]string{
+		{
 			"Name": "foo",
 			"Unit": "",
 		},
@@ -779,9 +798,9 @@ func TestBuildCWMetric(t *testing.T) {
 		assert.NotNil(t, cwMetric)
 		assert.Equal(t, 1, len(cwMetric.Measurements))
 		expectedMeasurement := CwMeasurement{
-			Namespace: namespace,
+			Namespace:  namespace,
 			Dimensions: [][]string{{"label1", OTelLib}},
-			Metrics: metricSlice,
+			Metrics:    metricSlice,
 		}
 		assert.Equal(t, expectedMeasurement, cwMetric.Measurements[0])
 		expectedFields := map[string]interface{}{
@@ -806,9 +825,9 @@ func TestBuildCWMetric(t *testing.T) {
 		assert.NotNil(t, cwMetric)
 		assert.Equal(t, 1, len(cwMetric.Measurements))
 		expectedMeasurement := CwMeasurement{
-			Namespace: namespace,
+			Namespace:  namespace,
 			Dimensions: [][]string{{"label1", OTelLib}},
-			Metrics: metricSlice,
+			Metrics:    metricSlice,
 		}
 		assert.Equal(t, expectedMeasurement, cwMetric.Measurements[0])
 		expectedFields := map[string]interface{}{
@@ -835,9 +854,9 @@ func TestBuildCWMetric(t *testing.T) {
 		assert.NotNil(t, cwMetric)
 		assert.Equal(t, 1, len(cwMetric.Measurements))
 		expectedMeasurement := CwMeasurement{
-			Namespace: namespace,
+			Namespace:  namespace,
 			Dimensions: [][]string{{"label1", OTelLib}},
-			Metrics: metricSlice,
+			Metrics:    metricSlice,
 		}
 		assert.Equal(t, expectedMeasurement, cwMetric.Measurements[0])
 		expectedFields := map[string]interface{}{
@@ -864,9 +883,9 @@ func TestBuildCWMetric(t *testing.T) {
 		assert.NotNil(t, cwMetric)
 		assert.Equal(t, 1, len(cwMetric.Measurements))
 		expectedMeasurement := CwMeasurement{
-			Namespace: namespace,
+			Namespace:  namespace,
 			Dimensions: [][]string{{"label1", OTelLib}},
-			Metrics: metricSlice,
+			Metrics:    metricSlice,
 		}
 		assert.Equal(t, expectedMeasurement, cwMetric.Measurements[0])
 		expectedFields := map[string]interface{}{
@@ -894,14 +913,14 @@ func TestBuildCWMetric(t *testing.T) {
 		assert.NotNil(t, cwMetric)
 		assert.Equal(t, 1, len(cwMetric.Measurements))
 		expectedMeasurement := CwMeasurement{
-			Namespace: namespace,
+			Namespace:  namespace,
 			Dimensions: [][]string{{"label1", OTelLib}},
-			Metrics: metricSlice,
+			Metrics:    metricSlice,
 		}
 		assert.Equal(t, expectedMeasurement, cwMetric.Measurements[0])
 		expectedFields := map[string]interface{}{
-			OTelLib:  instrLibName,
-			"foo":    &CWMetricStats{
+			OTelLib: instrLibName,
+			"foo": &CWMetricStats{
 				Min:   1,
 				Max:   3,
 				Sum:   17.13,
@@ -911,7 +930,6 @@ func TestBuildCWMetric(t *testing.T) {
 		}
 		assert.Equal(t, expectedFields, cwMetric.Fields)
 	})
-	
 	t.Run("Invalid datapoint type", func(t *testing.T) {
 		metric.SetDataType(pdata.MetricDataTypeIntGauge)
 		dp := pdata.NewIntHistogramDataPoint()
@@ -956,35 +974,23 @@ func TestCreateDimensions(t *testing.T) {
 		},
 	}
 
-	sliceSorter := func(slice [][]string) func(a, b int) bool {
-		stringified := make([]string, len(slice))
-		for i, v := range slice {
-			stringified[i] = strings.Join(v, ",")
-		}
-		return func(i, j int) bool {
-			return stringified[i] > stringified[j]
-		}
-	}
-
 	for _, tc := range testCases {
-		dp := pdata.NewIntDataPoint()
-		dp.InitEmpty()
-		dp.LabelsMap().InitFromMap(tc.labels)
-		dimensions, fields := createDimensions(dp, OTelLib, ZeroAndSingleDimensionRollup)
+		t.Run(tc.testName, func(t *testing.T) {
+			dp := pdata.NewIntDataPoint()
+			dp.InitEmpty()
+			dp.LabelsMap().InitFromMap(tc.labels)
+			dimensions, fields := createDimensions(dp, OTelLib, ZeroAndSingleDimensionRollup)
 
-		// Sort slice for equality check
-		sort.Slice(tc.dims, sliceSorter(tc.dims))
-		sort.Slice(dimensions, sliceSorter(dimensions))
+			assertDimsEqual(t, tc.dims, dimensions)
 
-		assert.Equal(t, tc.dims, dimensions)
+			expectedFields := make(map[string]interface{})
+			for k, v := range tc.labels {
+				expectedFields[k] = v
+			}
+			expectedFields[OTellibDimensionKey] = OTelLib
 
-		expectedFields := make(map[string]interface{})
-		for k, v := range tc.labels {
-			expectedFields[k] = v
-		}
-		expectedFields[OTellibDimensionKey] = OTelLib
-
-		assert.Equal(t, expectedFields, fields)
+			assert.Equal(t, expectedFields, fields)
+		})
 	}
 
 }
