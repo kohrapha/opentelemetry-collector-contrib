@@ -132,27 +132,27 @@ func TranslateOtToCWMetric(rm *pdata.ResourceMetrics, dimensionRollupOption stri
 }
 
 func batchCWMetrics(cwMetricList []*CWMetrics, groupedCWMetricMap map[string]*GroupedCWMetric, cwMetricsMap map[string]*CWMetrics) {
-	for _, i := range cwMetricList {
-		if len(i.Measurements[0].Dimensions[0]) > 0 {
-			key := strings.Join(i.Measurements[0].Dimensions[0], "")
+	for _, met := range cwMetricList {
+		if len(met.Measurements[0].Dimensions[0]) > 0 {
+			key := strings.Join(met.Measurements[0].Dimensions[0], "")
 			if _, ok := cwMetricsMap[key]; ok {
-				for _, v := range i.Measurements[0].Metrics {
-					groupedCWMetricMap[key].Metrics[v["Name"]] = i.Fields[v["Name"]]
+				for _, v := range met.Measurements[0].Metrics {
+					groupedCWMetricMap[key].Metrics[v["Name"]] = met.Fields[v["Name"]]
 				}
 			} else {
-				cwMetricsMap[key]=i
+				cwMetricsMap[key]=met
 				metricMap := make(map[string]interface{})
 				dimensionMap := make(map[string]interface{})
 				
-				for _, v := range i.Measurements[0].Dimensions[0] {
-					dimensionMap[v] = i.Fields[v]
+				for _, v := range met.Measurements[0].Dimensions[0] {
+					dimensionMap[v] = met.Fields[v]
 				}
 				
-				for _, v := range i.Measurements[0].Metrics {
-					metricMap[v["Name"]] = i.Fields[v["Name"]]
+				for _, v := range met.Measurements[0].Metrics {
+					metricMap[v["Name"]] = met.Fields[v["Name"]]
 				}
 
-				m := &GroupedCWMetric{Namespace: i.Measurements[0].Namespace, Metrics: metricMap, Dimensions: dimensionMap, Timestamp: i.Timestamp}
+				m := &GroupedCWMetric{Namespace: met.Measurements[0].Namespace, Metrics: metricMap, Dimensions: dimensionMap, Timestamp: met.Timestamp}
 
 				groupedCWMetricMap[key] = m
 			}
