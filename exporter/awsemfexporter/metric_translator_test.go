@@ -261,7 +261,9 @@ func TestTranslateOtToCWMetric(t *testing.T) {
 		},
 	}
 	rm := internaldata.OCToMetrics(md).ResourceMetrics().At(0)
-	cwm, totalDroppedMetrics := TranslateOtToCWMetric(&rm, ZeroAndSingleDimensionRollup, "")
+	cwmMap := make(map[string]*CWMetrics)
+	batchedCwmMap := make(map[string]*GroupedCWMetric)
+	cwm, totalDroppedMetrics := TranslateOtToCWMetric(&rm, ZeroAndSingleDimensionRollup, cwmMap, batchedCwmMap, "")
 	assert.Equal(t, 1, totalDroppedMetrics)
 	assert.NotNil(t, cwm)
 	assert.Equal(t, 5, len(cwm))
@@ -294,7 +296,9 @@ func TestTranslateOtToCWMetricWithNameSpace(t *testing.T) {
 		Metrics: []*metricspb.Metric{},
 	}
 	rm := internaldata.OCToMetrics(md).ResourceMetrics().At(0)
-	cwm, totalDroppedMetrics := TranslateOtToCWMetric(&rm, ZeroAndSingleDimensionRollup, "")
+	cwmMap := make(map[string]*CWMetrics)
+	batchedCwmMap := make(map[string]*GroupedCWMetric)
+	cwm, totalDroppedMetrics := TranslateOtToCWMetric(&rm, ZeroAndSingleDimensionRollup, cwmMap, batchedCwmMap, "")
 	assert.Equal(t, 0, totalDroppedMetrics)
 	assert.Nil(t, cwm)
 	assert.Equal(t, 0, len(cwm))
@@ -386,13 +390,17 @@ func TestTranslateOtToCWMetricWithNameSpace(t *testing.T) {
 		},
 	}
 	rm = internaldata.OCToMetrics(md).ResourceMetrics().At(0)
-	cwm, totalDroppedMetrics = TranslateOtToCWMetric(&rm, ZeroAndSingleDimensionRollup, "")
+	cwm, totalDroppedMetrics = TranslateOtToCWMetric(&rm, ZeroAndSingleDimensionRollup, cwmMap, batchedCwmMap, "")
 	assert.Equal(t, 0, totalDroppedMetrics)
 	assert.NotNil(t, cwm)
 	assert.Equal(t, 1, len(cwm))
 
 	met := cwm[0]
 	assert.Equal(t, "myServiceNS", met.Measurements[0].Namespace)
+}
+
+func TestBatchCWMetrics(t *testing.T) {
+	// todo
 }
 
 func TestTranslateCWMetricToEMF(t *testing.T) {
@@ -420,8 +428,40 @@ func TestTranslateCWMetricToEMF(t *testing.T) {
 	assert.Equal(t, readFromFile("testdata/testTranslateCWMetricToEMF.json"), *inputLogEvent[0].InputLogEvent.Message, "Expect to be equal")
 }
 
-func TestGetMeasurements(t *testing.T) {
+func TestTranslateBatchedMetricToEMF(t *testing.T) {
+	dimensions := map[string]interface{} {
+		"Namespace": "kube-system",
+        "OTLib": "Undefined",
+        "Service": "kube-dns",
+        "container_name": "coredns",
+        "eks_amazonaws_com_component": "kube-dns",
+        "k8s_app": "kube-dns",
+        "kubernetes_io_cluster_service": "true",
+        "kubernetes_io_name": "CoreDNS",
+        "kubernetes_node": "ip-192-168-43-221.us-west-2.compute.internal",
+        "pod_name": "coredns-5946c5d67c-txp4b",
+	}
 
+
+	metrics := map[string]interface{} {
+        "go_goroutines": 0,
+        "go_threads": 0,
+	}
+	namespace := string("kubernetes-service-endpoints")
+	timestamp := int64(1603750966417)
+
+	met := &GroupedCWMetric{
+		Namespace:	  namespace,
+		Timestamp:    timestamp,
+		Dimensions:   dimensions,
+		Metrics: 	  metrics,
+	}
+	key := string("NamespaceOTLibServicecontainer_nameeks_amazonaws_com_componentk8s_appkubernetes_io_cluster_servicekubernetes_io_namekubernetes_nodepod_name")
+	res := map[string]*GroupedCWMetric{}
+	res[key] = met
+	inputLogEvent := TranslateBatchedMetricToEMF(res)
+
+	assert.Equal(t, readFromFile("testdata/testTranslateBatchedMetricToEMF.json"), *inputLogEvent[0].InputLogEvent.Message, "Expect to be equal")
 }
 
 func TestCalculateRate(t *testing.T) {

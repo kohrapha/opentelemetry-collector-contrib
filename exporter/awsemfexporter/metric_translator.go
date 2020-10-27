@@ -66,6 +66,7 @@ type GroupedCWMetric struct {
 	Metrics      map[string]interface{}
 	Timestamp    int64
 	Dimensions   map[string]interface{}
+	MetricNames  []string
 }
 
 // CwMeasurement defines
@@ -138,21 +139,32 @@ func batchCWMetrics(cwMetricList []*CWMetrics, groupedCWMetricMap map[string]*Gr
 			if _, ok := cwMetricsMap[key]; ok {
 				for _, v := range met.Measurements[0].Metrics {
 					groupedCWMetricMap[key].Metrics[v["Name"]] = met.Fields[v["Name"]]
+					groupedCWMetricMap[key].Metrics[v["Name"]+"Unit"] = v["Unit"]
+					groupedCWMetricMap[key].MetricNames = append(groupedCWMetricMap[key].MetricNames, v["Name"])
 				}
 			} else {
 				cwMetricsMap[key]=met
 				metricMap := make(map[string]interface{})
 				dimensionMap := make(map[string]interface{})
-				
+				metricNames := []string{}
+
 				for _, v := range met.Measurements[0].Dimensions[0] {
 					dimensionMap[v] = met.Fields[v]
 				}
 				
 				for _, v := range met.Measurements[0].Metrics {
 					metricMap[v["Name"]] = met.Fields[v["Name"]]
+					metricMap[v["Name"]+"Unit"] = v["Unit"]
+					metricNames = append(metricNames, v["Name"])
 				}
 
-				m := &GroupedCWMetric{Namespace: met.Measurements[0].Namespace, Metrics: metricMap, Dimensions: dimensionMap, Timestamp: met.Timestamp}
+				m := &GroupedCWMetric {
+					Namespace: met.Measurements[0].Namespace, 
+					Metrics: metricMap,
+					Timestamp: met.Timestamp, 
+					Dimensions: dimensionMap, 
+					MetricNames: metricNames,
+				}
 
 				groupedCWMetricMap[key] = m
 			}
@@ -164,16 +176,37 @@ func TranslateBatchedMetricToEMF(groupedCWMetricMap map[string]*GroupedCWMetric)
 	// convert CWMetric into map format for compatible with PLE input
 	ples := make([]*LogEvent, 0, maximumLogEventsPerPut)
 	for _, v := range groupedCWMetricMap {
-		dMap := make(map[string]interface{})
-		mMap := make(map[string]interface{})
 		fieldMap := make(map[string]interface{})
-		dMap = v.Dimensions
-		mMap = v.Metrics
-		
+		dimensionsList := make([][]string, 0)
+		metricsList := make([]map[string]string, 0)
 		fieldMap["Namespace"] = v.Namespace
-		fieldMap["Timestamp"] = v.Timestamp
-		fieldMap["Dimensions"] = dMap
-		fieldMap["Metrics"] = mMap 
+
+		dList := make([]string, 0)
+		for key, val := range v.Dimensions {
+			dList = append(dList,key)
+			fieldMap[key] = val
+		} 
+		
+		dimensionsList = append(dimensionsList, dList)	
+
+		for _, val := range v.MetricNames {
+			metricDef := make(map[string]string)
+			fieldMap[val] = v.Metrics[val]
+			metricDef["Name"] = val
+			metricDef["Unit"] = v.Metrics[val+"Unit"].(string)
+			metricsList = append(metricsList, metricDef)
+		} 
+			
+		cwm := &CwMeasurement {
+			Namespace: v.Namespace,
+			Dimensions: dimensionsList,
+			Metrics: metricsList,
+		}
+
+		cwmMap := make(map[string]interface{})
+		cwmMap["CloudWatchMetrics"] = cwm 
+		cwmMap["Timestamp"] = v.Timestamp
+		fieldMap["_aws"] = cwmMap
 
 		pleMsg, err := json.Marshal(fieldMap)
 		if err != nil {
