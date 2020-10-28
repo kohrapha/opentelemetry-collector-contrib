@@ -2013,22 +2013,23 @@ func BenchmarkTranslateOtToCWMetricWithoutInstrLibrary(b *testing.B) {
 	}
 }
 
-func BenchmarkTranslateOtToCWMetricWithNamespace(b *testing.B) {
-	md := consumerdata.MetricsData{
-		Node: &commonpb.Node{
-			LibraryInfo: &commonpb.LibraryInfo{ExporterVersion: "SomeVersion"},
-		},
-		Resource: &resourcepb.Resource{
-			Labels: map[string]string{
-				conventions.AttributeServiceName: "myServiceName",
-			},
-		},
-		Metrics: []*metricspb.Metric{},
-	}
+func BenchmarkTranslateOtToCWMetricWithFiltering(b *testing.B) {
+	md := createMetricTestData()
 	rm := internaldata.OCToMetrics(md).ResourceMetrics().At(0)
+	ilms := rm.InstrumentationLibraryMetrics()
+	ilm := ilms.At(0)
+	ilm.InstrumentationLibrary().InitEmpty()
+	ilm.InstrumentationLibrary().SetName("cloudwatch-lib")
+	m := MetricDeclaration{
+		Dimensions:          [][]string{{"spanName"}},
+		MetricNameSelectors: []string{"spanCounter", "spanGaugeCounter"},
+	}
+	logger := zap.NewNop()
+	m.Init(logger)
 	config := &Config{
 		Namespace:             "",
 		DimensionRollupOption: ZeroAndSingleDimensionRollup,
+		MetricDeclarations:    []*MetricDeclaration{&m},
 	}
 
 	b.ResetTimer()
