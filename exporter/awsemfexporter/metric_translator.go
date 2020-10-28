@@ -66,7 +66,7 @@ type GroupedCWMetric struct {
 	Metrics      map[string]interface{}
 	Timestamp    int64
 	Dimensions   map[string]interface{}
-	MetricNames  []string
+	MetricUnits  map[string]string
 }
 
 // CwMeasurement defines
@@ -139,14 +139,13 @@ func batchCWMetrics(cwMetricList []*CWMetrics, groupedCWMetricMap map[string]*Gr
 			if _, ok := cwMetricsMap[key]; ok {
 				for _, v := range met.Measurements[0].Metrics {
 					groupedCWMetricMap[key].Metrics[v["Name"]] = met.Fields[v["Name"]]
-					groupedCWMetricMap[key].Metrics[v["Name"]+"Unit"] = v["Unit"]
-					groupedCWMetricMap[key].MetricNames = append(groupedCWMetricMap[key].MetricNames, v["Name"])
+					groupedCWMetricMap[key].MetricUnits[v["Name"]] = v["Unit"]
 				}
 			} else {
 				cwMetricsMap[key]=met
 				metricMap := make(map[string]interface{})
 				dimensionMap := make(map[string]interface{})
-				metricNames := []string{}
+				metricUnits := make(map[string]string)
 
 				for _, v := range met.Measurements[0].Dimensions[0] {
 					dimensionMap[v] = met.Fields[v]
@@ -154,8 +153,7 @@ func batchCWMetrics(cwMetricList []*CWMetrics, groupedCWMetricMap map[string]*Gr
 				
 				for _, v := range met.Measurements[0].Metrics {
 					metricMap[v["Name"]] = met.Fields[v["Name"]]
-					metricMap[v["Name"]+"Unit"] = v["Unit"]
-					metricNames = append(metricNames, v["Name"])
+					metricUnits[v["Name"]] = v["Unit"]
 				}
 
 				m := &GroupedCWMetric {
@@ -163,7 +161,7 @@ func batchCWMetrics(cwMetricList []*CWMetrics, groupedCWMetricMap map[string]*Gr
 					Metrics: metricMap,
 					Timestamp: met.Timestamp, 
 					Dimensions: dimensionMap, 
-					MetricNames: metricNames,
+					MetricUnits: metricUnits,
 				}
 
 				groupedCWMetricMap[key] = m
@@ -189,12 +187,12 @@ func TranslateBatchedMetricToEMF(groupedCWMetricMap map[string]*GroupedCWMetric)
 		
 		dimensionsList = append(dimensionsList, dList)	
 
-		for _, val := range v.MetricNames {
+		for key, val := range v.MetricUnits {
 			metricDef := make(map[string]string)
-			fieldMap[val] = v.Metrics[val]
-			metricDef["Name"] = val
-			metricDef["Unit"] = v.Metrics[val+"Unit"].(string)
+			metricDef["Name"] = key
+			metricDef["Unit"] = val
 			metricsList = append(metricsList, metricDef)
+			fieldMap[key] = val
 		} 
 			
 		cwm := &CwMeasurement {
