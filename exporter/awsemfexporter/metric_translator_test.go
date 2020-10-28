@@ -400,7 +400,52 @@ func TestTranslateOtToCWMetricWithNameSpace(t *testing.T) {
 }
 
 func TestBatchCWMetrics(t *testing.T) {
-	// todo
+	cwMetricsMap := make(map[string]*CWMetrics)
+	groupedCWMetricMap := make(map[string]*GroupedCWMetric) 
+
+	cwMeasurement_1 := CwMeasurement{
+		Namespace:  "eks-aoc",
+		Dimensions: [][]string{{"controller_pod", "kubernetes_node"}},
+		Metrics: []map[string]string{{
+			"Name": "nginx_ingress_controller_nginx_process_connections",
+			"Unit": "",
+		}},
+	}
+	timestamp_1 := int64(1603909497679)
+	fields_1 := make(map[string]interface{})
+	fields_1["nginx_ingress_controller_nginx_process_connections"] = 0
+	fields_1["controller_pod"] = "my-nginx-ingress-nginx-controller-bbf548c86-wl84b"
+	fields_1["kubernetes_node"] = "ip-192-168-17-95.us-west-2.compute.internal"
+
+	met_1 := &CWMetrics{
+		Timestamp:    timestamp_1,
+		Fields:       fields_1,
+		Measurements: []CwMeasurement{cwMeasurement_1},
+	}
+
+	cwMeasurement_2 := CwMeasurement{
+		Namespace:  "eks-aoc",
+		Dimensions: [][]string{{"controller_pod", "kubernetes_node"}},
+		Metrics: []map[string]string{{
+			"Name": "nginx_ingress_controller_nginx_process_connections_total",
+			"Unit": "",
+		}},
+	}
+	timestamp_2 := int64(1603909497679)
+	fields_2 := make(map[string]interface{})
+	fields_2["nginx_ingress_controller_nginx_process_connections_total"] = 2.383293611773137
+	fields_2["controller_pod"] = "my-nginx-ingress-nginx-controller-bbf548c86-wl84b"
+	fields_2["kubernetes_node"] = "ip-192-168-17-95.us-west-2.compute.internal"
+
+	met_2 := &CWMetrics{
+		Timestamp:    timestamp_2,
+		Fields:       fields_2,
+		Measurements: []CwMeasurement{cwMeasurement_2},
+	}
+	key := "controller_podkubernetes_node"
+	batchCWMetrics([]*CWMetrics{met_1, met_2}, groupedCWMetricMap, cwMetricsMap)
+	assert.Equal(t, len(groupedCWMetricMap), 1)
+	assert.Equal(t, len(groupedCWMetricMap[key].Metrics), 2)
 }
 
 func TestTranslateCWMetricToEMF(t *testing.T) {
@@ -429,24 +474,9 @@ func TestTranslateCWMetricToEMF(t *testing.T) {
 }
 
 func TestTranslateBatchedMetricToEMF(t *testing.T) {
-	dimensions := map[string]interface{} {
-		"Namespace": "kube-system",
-        "OTLib": "Undefined",
-        "Service": "kube-dns",
-        "container_name": "coredns",
-        "eks_amazonaws_com_component": "kube-dns",
-        "k8s_app": "kube-dns",
-        "kubernetes_io_cluster_service": "true",
-        "kubernetes_io_name": "CoreDNS",
-        "kubernetes_node": "ip-192-168-43-221.us-west-2.compute.internal",
-        "pod_name": "coredns-5946c5d67c-txp4b",
-	}
-
-
-	metrics := map[string]interface{} {
-        "go_goroutines": 0,
-        "go_threads": 0,
-	}
+	dimensions := map[string]interface{} {"Namespace": "kube-system",}
+	metrics := map[string]interface{} {"go_goroutines": 0,}
+	metricUnits := map[string]string {"go_goroutines": "",}
 	namespace := string("kubernetes-service-endpoints")
 	timestamp := int64(1603750966417)
 
@@ -455,7 +485,9 @@ func TestTranslateBatchedMetricToEMF(t *testing.T) {
 		Timestamp:    timestamp,
 		Dimensions:   dimensions,
 		Metrics: 	  metrics,
+		MetricUnits:  metricUnits,
 	}
+
 	key := string("NamespaceOTLibServicecontainer_nameeks_amazonaws_com_componentk8s_appkubernetes_io_cluster_servicekubernetes_io_namekubernetes_nodepod_name")
 	res := map[string]*GroupedCWMetric{}
 	res[key] = met

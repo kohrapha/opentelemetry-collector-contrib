@@ -192,7 +192,7 @@ func TranslateBatchedMetricToEMF(groupedCWMetricMap map[string]*GroupedCWMetric)
 			metricDef["Name"] = key
 			metricDef["Unit"] = val
 			metricsList = append(metricsList, metricDef)
-			fieldMap[key] = val
+			fieldMap[key] = v.Metrics[key]
 		} 
 			
 		cwm := &CwMeasurement {
