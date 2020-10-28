@@ -40,34 +40,34 @@ type MetricDeclaration struct {
 
 // Init initializes the MetricDeclaration struct. Performs validation and compiles
 // regex strings.
-func (md *MetricDeclaration) Init(logger *zap.Logger) (err error) {
+func (m *MetricDeclaration) Init(logger *zap.Logger) (err error) {
 	// Return error if no metric name selectors are defined
-	if len(md.MetricNameSelectors) == 0 {
+	if len(m.MetricNameSelectors) == 0 {
 		return errors.New("Invalid metric declaration: no metric name selectors defined.")
 	}
 
 	// Filter out dimension sets with more than 10 elements
-	validDims := make([][]string, 0, len(md.Dimensions))
-	for _, dimSet := range md.Dimensions {
+	validDims := make([][]string, 0, len(m.Dimensions))
+	for _, dimSet := range m.Dimensions {
 		if len(dimSet) <= 10 {
 			validDims = append(validDims, dimSet)
 		} else {
 			logger.Warn("Dropped dimension set: > 10 dimensions specified.", zap.String("dimensions", strings.Join(dimSet, ",")))
 		}
 	}
-	md.Dimensions = validDims
+	m.Dimensions = validDims
 
-	md.metricRegexList = make([]*regexp.Regexp, len(md.MetricNameSelectors))
-	for i, selector := range md.MetricNameSelectors {
-		md.metricRegexList[i] = regexp.MustCompile(selector)
+	m.metricRegexList = make([]*regexp.Regexp, len(m.MetricNameSelectors))
+	for i, selector := range m.MetricNameSelectors {
+		m.metricRegexList[i] = regexp.MustCompile(selector)
 	}
 	return
 }
 
 // Matches returns true if the given OTLP Metric's name matches any of the Metric
 // Declaration's metric name selectors.
-func (md *MetricDeclaration) Matches(metric *pdata.Metric) bool {
-	for _, regex := range md.metricRegexList {
+func (m *MetricDeclaration) Matches(metric *pdata.Metric) bool {
+	for _, regex := range m.metricRegexList {
 		if regex.MatchString(metric.Name()) {
 			return true
 		}
@@ -77,8 +77,8 @@ func (md *MetricDeclaration) Matches(metric *pdata.Metric) bool {
 
 // ExtractDimensions extracts dimensions within the MetricDeclaration that only
 // contains labels found in `labels`.
-func (md *MetricDeclaration) ExtractDimensions(labels map[string]string) (dimensions [][]string) {
-	for _, dimensionSet := range md.Dimensions {
+func (m *MetricDeclaration) ExtractDimensions(labels map[string]string) (dimensions [][]string) {
+	for _, dimensionSet := range m.Dimensions {
 		if len(dimensionSet) == 0 {
 			continue
 		}
@@ -98,10 +98,10 @@ func (md *MetricDeclaration) ExtractDimensions(labels map[string]string) (dimens
 
 // processMetricDeclarations processes a list of MetricDeclarations and returns a
 // list of dimensions that matches the given `metric`.
-func processMetricDeclarations(mds []*MetricDeclaration, metric *pdata.Metric, labels map[string]string) (dimensionsList [][][]string) {
-	for _, md := range mds {
-		if md.Matches(metric) {
-			dimensions := md.ExtractDimensions(labels)
+func processMetricDeclarations(metricDeclarations []*MetricDeclaration, metric *pdata.Metric, labels map[string]string) (dimensionsList [][][]string) {
+	for _, m := range metricDeclarations {
+		if m.Matches(metric) {
+			dimensions := m.ExtractDimensions(labels)
 			if len(dimensions) > 0 {
 				dimensionsList = append(dimensionsList, dimensions)
 			}

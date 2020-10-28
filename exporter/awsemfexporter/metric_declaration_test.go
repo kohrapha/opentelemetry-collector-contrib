@@ -25,28 +25,28 @@ import (
 )
 
 func TestInit(t *testing.T) {
-	md := &MetricDeclaration{
+	m := &MetricDeclaration{
 		MetricNameSelectors: []string{"a", "b", "aa"},
 	}
 	logger := zap.NewNop()
-	err := md.Init(logger)
+	err := m.Init(logger)
 	assert.Nil(t, err)
-	assert.Equal(t, 3, len(md.metricRegexList))
+	assert.Equal(t, 3, len(m.metricRegexList))
 
-	md = &MetricDeclaration{
+	m = &MetricDeclaration{
 		Dimensions: [][]string{
 			{"foo"},
 			{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j"},
 		},
 		MetricNameSelectors: []string{"a.*", "b$", "aa+"},
 	}
-	err = md.Init(logger)
+	err = m.Init(logger)
 	assert.Nil(t, err)
-	assert.Equal(t, 3, len(md.metricRegexList))
-	assert.Equal(t, 2, len(md.Dimensions))
+	assert.Equal(t, 3, len(m.metricRegexList))
+	assert.Equal(t, 2, len(m.Dimensions))
 
 	// Test removal of dimension sets with more than 10 elements
-	md = &MetricDeclaration{
+	m = &MetricDeclaration{
 		Dimensions: [][]string{
 			{"foo"},
 			{"a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "k"},
@@ -55,10 +55,10 @@ func TestInit(t *testing.T) {
 	}
 	obs, logs := observer.New(zap.WarnLevel)
 	logger = zap.New(obs)
-	err = md.Init(logger)
+	err = m.Init(logger)
 	assert.Nil(t, err)
-	assert.Equal(t, 3, len(md.metricRegexList))
-	assert.Equal(t, 1, len(md.Dimensions))
+	assert.Equal(t, 3, len(m.metricRegexList))
+	assert.Equal(t, 1, len(m.Dimensions))
 	// Check logged warning message
 	expectedLogs := []observer.LoggedEntry{{
 		Entry:   zapcore.Entry{Level: zap.WarnLevel, Message: "Dropped dimension set: > 10 dimensions specified."},
@@ -68,48 +68,48 @@ func TestInit(t *testing.T) {
 	assert.Equal(t, expectedLogs, logs.AllUntimed())
 
 	// Test invalid metric declaration
-	md = &MetricDeclaration{}
-	err = md.Init(logger)
+	m = &MetricDeclaration{}
+	err = m.Init(logger)
 	assert.NotNil(t, err)
 	assert.EqualError(t, err, "Invalid metric declaration: no metric name selectors defined.")
 }
 
 func TestMatches(t *testing.T) {
-	md := &MetricDeclaration{
+	m := &MetricDeclaration{
 		MetricNameSelectors: []string{"^a+$", "^b.*$", "^ac+a$"},
 	}
 	logger := zap.NewNop()
-	err := md.Init(logger)
+	err := m.Init(logger)
 	assert.Nil(t, err)
 
 	metric := pdata.NewMetric()
 	metric.InitEmpty()
 	metric.SetName("a")
-	assert.True(t, md.Matches(&metric))
+	assert.True(t, m.Matches(&metric))
 
 	metric.SetName("aa")
-	assert.True(t, md.Matches(&metric))
+	assert.True(t, m.Matches(&metric))
 
 	metric.SetName("aaaa")
-	assert.True(t, md.Matches(&metric))
+	assert.True(t, m.Matches(&metric))
 
 	metric.SetName("aaab")
-	assert.False(t, md.Matches(&metric))
+	assert.False(t, m.Matches(&metric))
 
 	metric.SetName("b")
-	assert.True(t, md.Matches(&metric))
+	assert.True(t, m.Matches(&metric))
 
 	metric.SetName("ba")
-	assert.True(t, md.Matches(&metric))
+	assert.True(t, m.Matches(&metric))
 
 	metric.SetName("c")
-	assert.False(t, md.Matches(&metric))
+	assert.False(t, m.Matches(&metric))
 
 	metric.SetName("aca")
-	assert.True(t, md.Matches(&metric))
+	assert.True(t, m.Matches(&metric))
 
 	metric.SetName("accca")
-	assert.True(t, md.Matches(&metric))
+	assert.True(t, m.Matches(&metric))
 }
 
 func TestExtractDimensions(t *testing.T) {
@@ -182,21 +182,21 @@ func TestExtractDimensions(t *testing.T) {
 	logger := zap.NewNop()
 
 	for _, tc := range testCases {
-		md := MetricDeclaration{
+		m := MetricDeclaration{
 			Dimensions:          tc.dimensions,
 			MetricNameSelectors: []string{"foo"},
 		}
 		t.Run(tc.testName, func(t *testing.T) {
-			err := md.Init(logger)
+			err := m.Init(logger)
 			assert.Nil(t, err)
-			dimensions := md.ExtractDimensions(tc.labels)
+			dimensions := m.ExtractDimensions(tc.labels)
 			assertDimsEqual(t, tc.extractedDimensions, dimensions)
 		})
 	}
 }
 
 func TestProcessMetricDeclarations(t *testing.T) {
-	mds := []*MetricDeclaration{
+	metricDeclarations := []*MetricDeclaration{
 		{
 			Dimensions:          [][]string{{"dim1", "dim2"}},
 			MetricNameSelectors: []string{"a", "b"},
@@ -211,8 +211,8 @@ func TestProcessMetricDeclarations(t *testing.T) {
 		},
 	}
 	logger := zap.NewNop()
-	for _, decl := range mds {
-		err := decl.Init(logger)
+	for _, m := range metricDeclarations {
+		err := m.Init(logger)
 		assert.Nil(t, err)
 	}
 	testCases := []struct {
@@ -278,7 +278,7 @@ func TestProcessMetricDeclarations(t *testing.T) {
 		metric.InitEmpty()
 		metric.SetName(tc.metricName)
 		t.Run(tc.testName, func(t *testing.T) {
-			dimensionsList := processMetricDeclarations(mds, &metric, tc.labels)
+			dimensionsList := processMetricDeclarations(metricDeclarations, &metric, tc.labels)
 			assert.Equal(t, len(tc.dimensionsList), len(dimensionsList))
 			for i, dimensions := range dimensionsList {
 				assertDimsEqual(t, tc.dimensionsList[i], dimensions)
