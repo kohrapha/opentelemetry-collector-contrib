@@ -87,7 +87,7 @@ type DataPoints interface {
 	At(int) DataPoint
 }
 
-// Wrapper interface for:
+// DataPoint is a wrapper interface for:
 // 	- pdata.IntDataPoint
 // 	- pdata.DoubleDataPoint
 // 	- pdata.IntHistogramDataPoint
@@ -167,6 +167,7 @@ func TranslateOtToCWMetric(rm *pdata.ResourceMetrics, config *Config) ([]*CWMetr
 	return cwMetricList, totalDroppedMetrics
 }
 
+// TranslateCWMetricToEMF converts CloudWatch Metric format to EMF.
 func TranslateCWMetricToEMF(cwMetricLists []*CWMetrics, logger *zap.Logger) []*LogEvent {
 	// convert CWMetric into map format for compatible with PLE input
 	ples := make([]*LogEvent, 0, maximumLogEventsPerPut)
@@ -200,7 +201,7 @@ func TranslateCWMetricToEMF(cwMetricLists []*CWMetrics, logger *zap.Logger) []*L
 	return ples
 }
 
-// Translates OTLP Metric to list of CW Metrics
+// getCWMetrics translates OTLP Metric to a list of CW Metrics
 func getCWMetrics(metric *pdata.Metric, namespace string, instrumentationLibName string, config *Config) []*CWMetrics {
 	var result []*CWMetrics
 	var dps DataPoints
@@ -242,7 +243,7 @@ func getCWMetrics(metric *pdata.Metric, namespace string, instrumentationLibName
 	return result
 }
 
-// Build CWMetric from DataPoint
+// buildCWMetric builds CWMetric from DataPoint
 func buildCWMetric(dp DataPoint, pmd *pdata.Metric, namespace string, metricSlice []map[string]string, instrumentationLibName string, config *Config) *CWMetrics {
 	dimensionRollupOption := config.DimensionRollupOption
 	mds := config.MetricDeclarations
