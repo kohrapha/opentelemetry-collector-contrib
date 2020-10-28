@@ -88,7 +88,7 @@ func TestTranslation(t *testing.T) {
 			samplePath: path.Join("../../../../internal/awsxray", "testdata", "serverSample.txt"),
 			expectedResourceAttrs: func(seg *awsxray.Segment) map[string]pdata.AttributeValue {
 				attrs := make(map[string]pdata.AttributeValue)
-				attrs[conventions.AttributeCloudProvider] = pdata.NewAttributeValueString("aws")
+				attrs[conventions.AttributeCloudProvider] = pdata.NewAttributeValueString(conventions.AttributeCloudProviderAWS)
 				attrs[conventions.AttributeTelemetrySDKVersion] = pdata.NewAttributeValueString(
 					*seg.AWS.XRay.SDKVersion)
 				attrs[conventions.AttributeTelemetrySDKName] = pdata.NewAttributeValueString(
@@ -128,7 +128,7 @@ func TestTranslation(t *testing.T) {
 			samplePath: path.Join("../../../../internal/awsxray", "testdata", "ddbSample.txt"),
 			expectedResourceAttrs: func(seg *awsxray.Segment) map[string]pdata.AttributeValue {
 				attrs := make(map[string]pdata.AttributeValue)
-				attrs[conventions.AttributeCloudProvider] = pdata.NewAttributeValueString("aws")
+				attrs[conventions.AttributeCloudProvider] = pdata.NewAttributeValueString(conventions.AttributeCloudProviderAWS)
 				attrs[conventions.AttributeTelemetrySDKVersion] = pdata.NewAttributeValueString(
 					*seg.AWS.XRay.SDKVersion)
 				attrs[conventions.AttributeTelemetrySDKName] = pdata.NewAttributeValueString(
@@ -148,7 +148,7 @@ func TestTranslation(t *testing.T) {
 					name:         *seg.Name,
 					startTimeSec: *seg.StartTime,
 					endTimeSec:   seg.EndTime,
-					spanKind:     pdata.SpanKindINTERNAL,
+					spanKind:     pdata.SpanKindSERVER,
 					spanStatus: spanSt{
 						code: pdata.StatusCodeInvalidArgument,
 					},
@@ -584,7 +584,7 @@ func TestTranslation(t *testing.T) {
 			samplePath: path.Join("../../../../internal/awsxray", "testdata", "awsValidAwsFields.txt"),
 			expectedResourceAttrs: func(seg *awsxray.Segment) map[string]pdata.AttributeValue {
 				attrs := make(map[string]pdata.AttributeValue)
-				attrs[conventions.AttributeCloudProvider] = pdata.NewAttributeValueString("aws")
+				attrs[conventions.AttributeCloudProvider] = pdata.NewAttributeValueString(conventions.AttributeCloudProviderAWS)
 				attrs[conventions.AttributeCloudAccount] = pdata.NewAttributeValueString(
 					*seg.AWS.AccountID)
 				attrs[conventions.AttributeCloudZone] = pdata.NewAttributeValueString(
@@ -654,7 +654,7 @@ func TestTranslation(t *testing.T) {
 					name:         *seg.Name,
 					startTimeSec: *seg.StartTime,
 					endTimeSec:   seg.EndTime,
-					spanKind:     pdata.SpanKindINTERNAL,
+					spanKind:     pdata.SpanKindSERVER,
 					spanStatus: spanSt{
 						message: *seg.Cause.ExceptionID,
 						code:    pdata.StatusCodeUnknownError,

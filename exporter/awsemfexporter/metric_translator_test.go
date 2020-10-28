@@ -38,22 +38,22 @@ import (
 )
 
 // Asserts whether dimension sets are equal (i.e. has same sets of dimensions)
-func assertDimsEqual(t *testing.T, dims1, dims2 [][]string) {
+func assertDimsEqual(t *testing.T, expected, actual [][]string) {
 	// Convert to string for easier sorting
-	stringified1 := make([]string, len(dims1))
-	stringified2 := make([]string, len(dims2))
-	for i, v := range dims1 {
+	expectedStringified := make([]string, len(expected))
+	actualStringified := make([]string, len(actual))
+	for i, v := range expected {
 		sort.Strings(v)
-		stringified1[i] = strings.Join(v, ",")
+		expectedStringified[i] = strings.Join(v, ",")
 	}
-	for i, v := range dims2 {
+	for i, v := range actual {
 		sort.Strings(v)
-		stringified2[i] = strings.Join(v, ",")
+		actualStringified[i] = strings.Join(v, ",")
 	}
 	// Sort across dimension sets for equality checking
-	sort.Strings(stringified1)
-	sort.Strings(stringified2)
-	assert.Equal(t, stringified1, stringified2)
+	sort.Strings(expectedStringified)
+	sort.Strings(actualStringified)
+	assert.Equal(t, expectedStringified, actualStringified)
 }
 
 func TestTranslateOtToCWMetricWithInstrLibrary(t *testing.T) {
@@ -383,7 +383,6 @@ func TestTranslateCWMetricToEMF(t *testing.T) {
 
 	assert.Equal(t, readFromFile("testdata/testTranslateCWMetricToEMF.json"), *inputLogEvent[0].InputLogEvent.Message, "Expect to be equal")
 }
-
 
 func TestTranslateCWMetricToEMFNoMeasurements(t *testing.T) {
 	timestamp := int64(1596151098037)
@@ -928,7 +927,7 @@ func TestBuildCWMetric(t *testing.T) {
 	instrLibName := "InstrLibName"
 	OTelLib := "OTelLib"
 	metricSlice := []map[string]string{
-		map[string]string{
+		{
 			"Name": "foo",
 			"Unit": "",
 		},
@@ -957,9 +956,9 @@ func TestBuildCWMetric(t *testing.T) {
 		assert.NotNil(t, cwMetric)
 		assert.Equal(t, 1, len(cwMetric.Measurements))
 		expectedMeasurement := CwMeasurement{
-			Namespace: namespace,
+			Namespace:  namespace,
 			Dimensions: [][]string{{"label1", OTelLib}},
-			Metrics: metricSlice,
+			Metrics:    metricSlice,
 		}
 		assert.Equal(t, expectedMeasurement, cwMetric.Measurements[0])
 		expectedFields := map[string]interface{}{
@@ -984,9 +983,9 @@ func TestBuildCWMetric(t *testing.T) {
 		assert.NotNil(t, cwMetric)
 		assert.Equal(t, 1, len(cwMetric.Measurements))
 		expectedMeasurement := CwMeasurement{
-			Namespace: namespace,
+			Namespace:  namespace,
 			Dimensions: [][]string{{"label1", OTelLib}},
-			Metrics: metricSlice,
+			Metrics:    metricSlice,
 		}
 		assert.Equal(t, expectedMeasurement, cwMetric.Measurements[0])
 		expectedFields := map[string]interface{}{
@@ -1013,9 +1012,9 @@ func TestBuildCWMetric(t *testing.T) {
 		assert.NotNil(t, cwMetric)
 		assert.Equal(t, 1, len(cwMetric.Measurements))
 		expectedMeasurement := CwMeasurement{
-			Namespace: namespace,
+			Namespace:  namespace,
 			Dimensions: [][]string{{"label1", OTelLib}},
-			Metrics: metricSlice,
+			Metrics:    metricSlice,
 		}
 		assert.Equal(t, expectedMeasurement, cwMetric.Measurements[0])
 		expectedFields := map[string]interface{}{
@@ -1042,9 +1041,9 @@ func TestBuildCWMetric(t *testing.T) {
 		assert.NotNil(t, cwMetric)
 		assert.Equal(t, 1, len(cwMetric.Measurements))
 		expectedMeasurement := CwMeasurement{
-			Namespace: namespace,
+			Namespace:  namespace,
 			Dimensions: [][]string{{"label1", OTelLib}},
-			Metrics: metricSlice,
+			Metrics:    metricSlice,
 		}
 		assert.Equal(t, expectedMeasurement, cwMetric.Measurements[0])
 		expectedFields := map[string]interface{}{
@@ -1072,14 +1071,14 @@ func TestBuildCWMetric(t *testing.T) {
 		assert.NotNil(t, cwMetric)
 		assert.Equal(t, 1, len(cwMetric.Measurements))
 		expectedMeasurement := CwMeasurement{
-			Namespace: namespace,
+			Namespace:  namespace,
 			Dimensions: [][]string{{"label1", OTelLib}},
-			Metrics: metricSlice,
+			Metrics:    metricSlice,
 		}
 		assert.Equal(t, expectedMeasurement, cwMetric.Measurements[0])
 		expectedFields := map[string]interface{}{
-			OTelLib:  instrLibName,
-			"foo":    &CWMetricStats{
+			OTelLib: instrLibName,
+			"foo": &CWMetricStats{
 				Min:   1,
 				Max:   3,
 				Sum:   17.13,
@@ -1826,4 +1825,88 @@ func TestNeedsCalculateRate(t *testing.T) {
 	assert.True(t, needsCalculateRate(&metric))
 	metric.DoubleSum().SetAggregationTemporality(pdata.AggregationTemporalityDelta)
 	assert.False(t, needsCalculateRate(&metric))
+}
+
+func BenchmarkTranslateOtToCWMetricWithInstrLibrary(b *testing.B) {
+	md := createMetricTestData()
+	rm := internaldata.OCToMetrics(md).ResourceMetrics().At(0)
+	ilms := rm.InstrumentationLibraryMetrics()
+	ilm := ilms.At(0)
+	ilm.InstrumentationLibrary().InitEmpty()
+	ilm.InstrumentationLibrary().SetName("cloudwatch-lib")
+	config := &Config{
+		Namespace: "",
+		DimensionRollupOption: ZeroAndSingleDimensionRollup,
+	}
+
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		TranslateOtToCWMetric(&rm, config)
+	}
+}
+
+func BenchmarkTranslateOtToCWMetricWithoutInstrLibrary(b *testing.B) {
+	md := createMetricTestData()
+	rm := internaldata.OCToMetrics(md).ResourceMetrics().At(0)
+	config := &Config{
+		Namespace: "",
+		DimensionRollupOption: ZeroAndSingleDimensionRollup,
+	}
+
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		TranslateOtToCWMetric(&rm, config)
+	}
+}
+
+func BenchmarkTranslateOtToCWMetricWithNamespace(b *testing.B) {
+	md := consumerdata.MetricsData{
+		Node: &commonpb.Node{
+			LibraryInfo: &commonpb.LibraryInfo{ExporterVersion: "SomeVersion"},
+		},
+		Resource: &resourcepb.Resource{
+			Labels: map[string]string{
+				conventions.AttributeServiceName: "myServiceName",
+			},
+		},
+		Metrics: []*metricspb.Metric{},
+	}
+	rm := internaldata.OCToMetrics(md).ResourceMetrics().At(0)
+	config := &Config{
+		Namespace: "",
+		DimensionRollupOption: ZeroAndSingleDimensionRollup,
+	}
+
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		TranslateOtToCWMetric(&rm, config)
+	}
+}
+
+func BenchmarkTranslateCWMetricToEMF(b *testing.B) {
+	cwMeasurement := CwMeasurement{
+		Namespace:  "test-emf",
+		Dimensions: [][]string{{"OTelLib"}, {"OTelLib", "spanName"}},
+		Metrics: []map[string]string{{
+			"Name": "spanCounter",
+			"Unit": "Count",
+		}},
+	}
+	timestamp := int64(1596151098037)
+	fields := make(map[string]interface{})
+	fields["OTelLib"] = "cloudwatch-otel"
+	fields["spanName"] = "test"
+	fields["spanCounter"] = 0
+
+	met := &CWMetrics{
+		Timestamp:    timestamp,
+		Fields:       fields,
+		Measurements: []CwMeasurement{cwMeasurement},
+	}
+	logger := zap.NewNop()
+
+	b.ResetTimer()
+	for n := 0; n < b.N; n++ {
+		TranslateCWMetricToEMF([]*CWMetrics{met}, logger)
+	}
 }
