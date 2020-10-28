@@ -1946,7 +1946,7 @@ func BenchmarkTranslateOtToCWMetricWithInstrLibrary(b *testing.B) {
 	ilm.InstrumentationLibrary().InitEmpty()
 	ilm.InstrumentationLibrary().SetName("cloudwatch-lib")
 	config := &Config{
-		Namespace: "",
+		Namespace:             "",
 		DimensionRollupOption: ZeroAndSingleDimensionRollup,
 	}
 
@@ -1960,7 +1960,7 @@ func BenchmarkTranslateOtToCWMetricWithoutInstrLibrary(b *testing.B) {
 	md := createMetricTestData()
 	rm := internaldata.OCToMetrics(md).ResourceMetrics().At(0)
 	config := &Config{
-		Namespace: "",
+		Namespace:             "",
 		DimensionRollupOption: ZeroAndSingleDimensionRollup,
 	}
 
@@ -1984,7 +1984,7 @@ func BenchmarkTranslateOtToCWMetricWithNamespace(b *testing.B) {
 	}
 	rm := internaldata.OCToMetrics(md).ResourceMetrics().At(0)
 	config := &Config{
-		Namespace: "",
+		Namespace:             "",
 		DimensionRollupOption: ZeroAndSingleDimensionRollup,
 	}
 
