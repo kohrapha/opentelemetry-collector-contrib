@@ -56,9 +56,16 @@ func assertDimsEqual(t *testing.T, expected, actual [][]string) {
 	assert.Equal(t, expectedStringified, actualStringified)
 }
 
+// Asserts whether CW Measurements are equal.
+func assertCwMeasurementEqual(t *testing.T, expected, actual CwMeasurement) {
+	assert.Equal(t, expected.Namespace, actual.Namespace)
+	assert.Equal(t, expected.Metrics, actual.Metrics)
+	assertDimsEqual(t, expected.Dimensions, actual.Dimensions)
+}
+
 func TestTranslateOtToCWMetricWithInstrLibrary(t *testing.T) {
 	config := &Config{
-		Namespace: "",
+		Namespace:             "",
 		DimensionRollupOption: ZeroAndSingleDimensionRollup,
 	}
 	md := createMetricTestData()
@@ -99,7 +106,7 @@ func TestTranslateOtToCWMetricWithInstrLibrary(t *testing.T) {
 
 func TestTranslateOtToCWMetricWithoutInstrLibrary(t *testing.T) {
 	config := &Config{
-		Namespace: "",
+		Namespace:             "",
 		DimensionRollupOption: ZeroAndSingleDimensionRollup,
 	}
 	md := createMetricTestData()
@@ -138,7 +145,7 @@ func TestTranslateOtToCWMetricWithoutInstrLibrary(t *testing.T) {
 
 func TestTranslateOtToCWMetricWithNameSpace(t *testing.T) {
 	config := &Config{
-		Namespace: "",
+		Namespace:             "",
 		DimensionRollupOption: ZeroAndSingleDimensionRollup,
 	}
 	md := consumerdata.MetricsData{
@@ -307,8 +314,8 @@ func TestTranslateOtToCWMetricWithFiltering(t *testing.T) {
 	testCases := []struct {
 		testName            string
 		metricNameSelectors []string
-		dimensions       	[][]string
-		numMeasurements		int
+		dimensions          [][]string
+		numMeasurements     int
 	}{
 		{
 			"With match",
@@ -332,13 +339,13 @@ func TestTranslateOtToCWMetricWithFiltering(t *testing.T) {
 
 	for _, tc := range testCases {
 		m := MetricDeclaration{
-			Dimensions: [][]string{{"isItAnError", "spanName"}},
+			Dimensions:          [][]string{{"isItAnError", "spanName"}},
 			MetricNameSelectors: tc.metricNameSelectors,
 		}
 		config := &Config{
-			Namespace: "",
+			Namespace:             "",
 			DimensionRollupOption: ZeroAndSingleDimensionRollup,
-			MetricDeclarations: []*MetricDeclaration{&m},
+			MetricDeclarations:    []*MetricDeclaration{&m},
 		}
 		t.Run(tc.testName, func(t *testing.T) {
 			err := m.Init(logger)
@@ -418,6 +425,7 @@ func TestGetCWMetrics(t *testing.T) {
 	OTelLib := "OTelLib"
 	instrumentationLibName := "InstrLibName"
 	config := &Config{
+		Namespace:             "",
 		DimensionRollupOption: "",
 	}
 
@@ -913,7 +921,9 @@ func TestGetCWMetrics(t *testing.T) {
 			for i, expected := range tc.expected {
 				cwMetric := cwMetrics[i]
 				assert.Equal(t, len(expected.Measurements), len(cwMetric.Measurements))
-				assert.Equal(t, expected.Measurements, cwMetric.Measurements)
+				for i, expectedMeasurement := range expected.Measurements {
+					assertCwMeasurementEqual(t, expectedMeasurement, cwMetric.Measurements[i])
+				}
 				assert.Equal(t, len(expected.Fields), len(cwMetric.Fields))
 				assert.Equal(t, expected.Fields, cwMetric.Fields)
 			}
@@ -957,7 +967,7 @@ func TestBuildCWMetric(t *testing.T) {
 			Dimensions: [][]string{{"label1", OTelLib}},
 			Metrics:    metricSlice,
 		}
-		assert.Equal(t, expectedMeasurement, cwMetric.Measurements[0])
+		assertCwMeasurementEqual(t, expectedMeasurement, cwMetric.Measurements[0])
 		expectedFields := map[string]interface{}{
 			OTelLib:  instrLibName,
 			"foo":    int64(-17),
@@ -984,7 +994,7 @@ func TestBuildCWMetric(t *testing.T) {
 			Dimensions: [][]string{{"label1", OTelLib}},
 			Metrics:    metricSlice,
 		}
-		assert.Equal(t, expectedMeasurement, cwMetric.Measurements[0])
+		assertCwMeasurementEqual(t, expectedMeasurement, cwMetric.Measurements[0])
 		expectedFields := map[string]interface{}{
 			OTelLib:  instrLibName,
 			"foo":    0.3,
@@ -1013,7 +1023,7 @@ func TestBuildCWMetric(t *testing.T) {
 			Dimensions: [][]string{{"label1", OTelLib}},
 			Metrics:    metricSlice,
 		}
-		assert.Equal(t, expectedMeasurement, cwMetric.Measurements[0])
+		assertCwMeasurementEqual(t, expectedMeasurement, cwMetric.Measurements[0])
 		expectedFields := map[string]interface{}{
 			OTelLib:  instrLibName,
 			"foo":    0,
@@ -1042,7 +1052,7 @@ func TestBuildCWMetric(t *testing.T) {
 			Dimensions: [][]string{{"label1", OTelLib}},
 			Metrics:    metricSlice,
 		}
-		assert.Equal(t, expectedMeasurement, cwMetric.Measurements[0])
+		assertCwMeasurementEqual(t, expectedMeasurement, cwMetric.Measurements[0])
 		expectedFields := map[string]interface{}{
 			OTelLib:  instrLibName,
 			"foo":    0,
@@ -1072,7 +1082,7 @@ func TestBuildCWMetric(t *testing.T) {
 			Dimensions: [][]string{{"label1", OTelLib}},
 			Metrics:    metricSlice,
 		}
-		assert.Equal(t, expectedMeasurement, cwMetric.Measurements[0])
+		assertCwMeasurementEqual(t, expectedMeasurement, cwMetric.Measurements[0])
 		expectedFields := map[string]interface{}{
 			OTelLib: instrLibName,
 			"foo": &CWMetricStats{
@@ -1097,10 +1107,10 @@ func TestBuildCWMetric(t *testing.T) {
 
 	// Test rollup options and labels
 	testCases := []struct {
-		testName 				string
-		labels 					map[string]string
-		dimensionRollupOption 	string
-		expectedDims 			[][]string
+		testName              string
+		labels                map[string]string
+		dimensionRollupOption string
+		expectedDims          [][]string
 	}{
 		{
 			"Single label w/ no rollup",
@@ -1116,7 +1126,6 @@ func TestBuildCWMetric(t *testing.T) {
 			SingleDimensionRollupOnly,
 			[][]string{
 				{"a", OTelLib},
-				{OTelLib, "a"},
 			},
 		},
 		{
@@ -1125,7 +1134,6 @@ func TestBuildCWMetric(t *testing.T) {
 			ZeroAndSingleDimensionRollup,
 			[][]string{
 				{"a", OTelLib},
-				{OTelLib, "a"},
 				{OTelLib},
 			},
 		},
@@ -1177,6 +1185,11 @@ func TestBuildCWMetric(t *testing.T) {
 			for k, v := range tc.labels {
 				expectedFields[k] = v
 			}
+			expectedMeasurement := CwMeasurement{
+				Namespace:  namespace,
+				Dimensions: tc.expectedDims,
+				Metrics:    metricSlice,
+			}
 
 			cwMetric := buildCWMetric(dp, &metric, namespace, metricSlice, OTelLib, config)
 
@@ -1185,10 +1198,7 @@ func TestBuildCWMetric(t *testing.T) {
 
 			// Check CW measurement
 			assert.Equal(t, 1, len(cwMetric.Measurements))
-			cwMeasurement := cwMetric.Measurements[0]
-			assert.Equal(t, namespace, cwMeasurement.Namespace)
-			assert.Equal(t, metricSlice, cwMeasurement.Metrics)
-			assertDimsEqual(t, tc.expectedDims, cwMeasurement.Dimensions)
+			assertCwMeasurementEqual(t, expectedMeasurement, cwMetric.Measurements[0])
 		})
 	}
 }
@@ -1204,18 +1214,18 @@ func TestBuildCWMetricWithMetricDeclarations(t *testing.T) {
 	metric.SetName(metricName)
 	metricSlice := []map[string]string{{"Name": metricName}}
 	testCases := []struct {
-		testName 				string
-		labels 					map[string]string
-		metricDeclarations 		[]*MetricDeclaration
-		dimensionRollupOption 	string
-		expectedDims 			[][][]string
+		testName              string
+		labels                map[string]string
+		metricDeclarations    []*MetricDeclaration
+		dimensionRollupOption string
+		expectedDims          [][][]string
 	}{
 		{
 			"Single label w/ no rollup",
 			map[string]string{"a": "foo"},
 			[]*MetricDeclaration{
 				{
-					Dimensions: [][]string{{"a"}},
+					Dimensions:          [][]string{{"a"}},
 					MetricNameSelectors: []string{metricName},
 				},
 			},
@@ -1227,7 +1237,7 @@ func TestBuildCWMetricWithMetricDeclarations(t *testing.T) {
 			map[string]string{"a": "foo"},
 			[]*MetricDeclaration{
 				{
-					Dimensions: [][]string{{"a", OTelLib}},
+					Dimensions:          [][]string{{"a", OTelLib}},
 					MetricNameSelectors: []string{metricName},
 				},
 			},
@@ -1239,7 +1249,7 @@ func TestBuildCWMetricWithMetricDeclarations(t *testing.T) {
 			map[string]string{"a": "foo"},
 			[]*MetricDeclaration{
 				{
-					Dimensions: [][]string{{"a"}},
+					Dimensions:          [][]string{{"a"}},
 					MetricNameSelectors: []string{metricName},
 				},
 			},
@@ -1251,7 +1261,7 @@ func TestBuildCWMetricWithMetricDeclarations(t *testing.T) {
 			map[string]string{"a": "foo"},
 			[]*MetricDeclaration{
 				{
-					Dimensions: [][]string{{"a"}},
+					Dimensions:          [][]string{{"a"}},
 					MetricNameSelectors: []string{metricName},
 				},
 			},
@@ -1263,7 +1273,7 @@ func TestBuildCWMetricWithMetricDeclarations(t *testing.T) {
 			map[string]string{"a": "foo"},
 			[]*MetricDeclaration{
 				{
-					Dimensions: [][]string{{"a"}},
+					Dimensions:          [][]string{{"a"}},
 					MetricNameSelectors: []string{"invalid"},
 				},
 			},
@@ -1275,7 +1285,7 @@ func TestBuildCWMetricWithMetricDeclarations(t *testing.T) {
 			map[string]string{"a": "foo", "b": "bar"},
 			[]*MetricDeclaration{
 				{
-					Dimensions: [][]string{{"a"}},
+					Dimensions:          [][]string{{"a"}},
 					MetricNameSelectors: []string{metricName},
 				},
 			},
@@ -1287,7 +1297,7 @@ func TestBuildCWMetricWithMetricDeclarations(t *testing.T) {
 			map[string]string{"a": "foo", "b": "bar"},
 			[]*MetricDeclaration{
 				{
-					Dimensions: [][]string{{"a"}},
+					Dimensions:          [][]string{{"a"}},
 					MetricNameSelectors: []string{metricName},
 				},
 			},
@@ -1304,7 +1314,7 @@ func TestBuildCWMetricWithMetricDeclarations(t *testing.T) {
 			map[string]string{"a": "foo", "b": "bar"},
 			[]*MetricDeclaration{
 				{
-					Dimensions: [][]string{{"a", "b"}, {"b"}},
+					Dimensions:          [][]string{{"a", "b"}, {"b"}},
 					MetricNameSelectors: []string{metricName},
 				},
 			},
@@ -1316,7 +1326,7 @@ func TestBuildCWMetricWithMetricDeclarations(t *testing.T) {
 			map[string]string{"a": "foo", "b": "bar"},
 			[]*MetricDeclaration{
 				{
-					Dimensions: [][]string{{"a", "b"}, {"b", OTelLib}, {OTelLib}},
+					Dimensions:          [][]string{{"a", "b"}, {"b", OTelLib}, {OTelLib}},
 					MetricNameSelectors: []string{metricName},
 				},
 			},
@@ -1328,7 +1338,7 @@ func TestBuildCWMetricWithMetricDeclarations(t *testing.T) {
 			map[string]string{"a": "foo", "b": "bar"},
 			[]*MetricDeclaration{
 				{
-					Dimensions: [][]string{{"a", "b"}, {"b"}},
+					Dimensions:          [][]string{{"a", "b"}, {"b"}},
 					MetricNameSelectors: []string{metricName},
 				},
 			},
@@ -1346,7 +1356,7 @@ func TestBuildCWMetricWithMetricDeclarations(t *testing.T) {
 			map[string]string{"a": "foo", "b": "bar"},
 			[]*MetricDeclaration{
 				{
-					Dimensions: [][]string{{"a", "b", "c"}, {"b"}},
+					Dimensions:          [][]string{{"a", "b", "c"}, {"b"}},
 					MetricNameSelectors: []string{metricName},
 				},
 			},
@@ -1363,7 +1373,7 @@ func TestBuildCWMetricWithMetricDeclarations(t *testing.T) {
 			map[string]string{"a": "foo", "b": "bar", "c": "car"},
 			[]*MetricDeclaration{
 				{
-					Dimensions: [][]string{{"a", "b"}, {"b"}},
+					Dimensions:          [][]string{{"a", "b"}, {"b"}},
 					MetricNameSelectors: []string{metricName},
 				},
 			},
@@ -1382,15 +1392,15 @@ func TestBuildCWMetricWithMetricDeclarations(t *testing.T) {
 			map[string]string{"a": "foo", "b": "bar", "c": "car"},
 			[]*MetricDeclaration{
 				{
-					Dimensions: [][]string{{"a", "b"}, {"b"}},
+					Dimensions:          [][]string{{"a", "b"}, {"b"}},
 					MetricNameSelectors: []string{metricName},
 				},
 				{
-					Dimensions: [][]string{{"a", "c"}, {"b"}, {"c"}},
+					Dimensions:          [][]string{{"a", "c"}, {"b"}, {"c"}},
 					MetricNameSelectors: []string{metricName},
 				},
 				{
-					Dimensions: [][]string{{"a", "d"}, {"b", "c"}},
+					Dimensions:          [][]string{{"a", "d"}, {"b", "c"}},
 					MetricNameSelectors: []string{metricName},
 				},
 			},
@@ -1406,15 +1416,15 @@ func TestBuildCWMetricWithMetricDeclarations(t *testing.T) {
 			map[string]string{"a": "foo", "b": "bar", "c": "car"},
 			[]*MetricDeclaration{
 				{
-					Dimensions: [][]string{{"a", "b"}, {"b"}},
+					Dimensions:          [][]string{{"a", "b"}, {"b"}},
 					MetricNameSelectors: []string{metricName},
 				},
 				{
-					Dimensions: [][]string{{"a", "c"}, {"b"}, {"c"}},
+					Dimensions:          [][]string{{"a", "c"}, {"b"}, {"c"}},
 					MetricNameSelectors: []string{metricName},
 				},
 				{
-					Dimensions: [][]string{{"a", "d"}, {"b", "c"}},
+					Dimensions:          [][]string{{"a", "d"}, {"b", "c"}},
 					MetricNameSelectors: []string{metricName},
 				},
 			},
@@ -1451,11 +1461,11 @@ func TestBuildCWMetricWithMetricDeclarations(t *testing.T) {
 			map[string]string{"a": "foo", "b": "bar", "c": "car"},
 			[]*MetricDeclaration{
 				{
-					Dimensions: [][]string{{"a", "b"}, {"b"}},
+					Dimensions:          [][]string{{"a", "b"}, {"b"}},
 					MetricNameSelectors: []string{metricName},
 				},
 				{
-					Dimensions: [][]string{{"a", "d"}},
+					Dimensions:          [][]string{{"a", "d"}},
 					MetricNameSelectors: []string{metricName},
 				},
 			},
@@ -1469,11 +1479,11 @@ func TestBuildCWMetricWithMetricDeclarations(t *testing.T) {
 			map[string]string{"a": "foo", "b": "bar", "c": "car"},
 			[]*MetricDeclaration{
 				{
-					Dimensions: [][]string{{"a", "e"}, {"d"}},
+					Dimensions:          [][]string{{"a", "e"}, {"d"}},
 					MetricNameSelectors: []string{metricName},
 				},
 				{
-					Dimensions: [][]string{{"a", "d"}},
+					Dimensions:          [][]string{{"a", "d"}},
 					MetricNameSelectors: []string{metricName},
 				},
 			},
@@ -1485,7 +1495,7 @@ func TestBuildCWMetricWithMetricDeclarations(t *testing.T) {
 			map[string]string{},
 			[]*MetricDeclaration{
 				{
-					Dimensions: [][]string{{"a", "b", "c"}, {"b"}},
+					Dimensions:          [][]string{{"a", "b", "c"}, {"b"}},
 					MetricNameSelectors: []string{metricName},
 				},
 			},
@@ -1501,9 +1511,9 @@ func TestBuildCWMetricWithMetricDeclarations(t *testing.T) {
 			dp.LabelsMap().InitFromMap(tc.labels)
 			dp.SetValue(metricValue)
 			config := &Config{
-				Namespace: namespace,
+				Namespace:             namespace,
 				DimensionRollupOption: tc.dimensionRollupOption,
-				MetricDeclarations: tc.metricDeclarations,
+				MetricDeclarations:    tc.metricDeclarations,
 			}
 			logger := zap.NewNop()
 			for _, m := range tc.metricDeclarations {
@@ -1513,24 +1523,26 @@ func TestBuildCWMetricWithMetricDeclarations(t *testing.T) {
 
 			expectedFields := map[string]interface{}{
 				OTellibDimensionKey: instrumentationLibName,
-				metricName: int64(-17),
+				metricName:          metricValue,
 			}
 			for k, v := range tc.labels {
 				expectedFields[k] = v
 			}
 
 			cwMetric := buildCWMetric(dp, &metric, namespace, metricSlice, instrumentationLibName, config)
-			
+
 			// Check fields
 			assert.Equal(t, expectedFields, cwMetric.Fields)
 
 			// Check CW measurement
 			assert.Equal(t, len(tc.expectedDims), len(cwMetric.Measurements))
 			for i, dimensions := range tc.expectedDims {
-				cwMeasurement := cwMetric.Measurements[i]
-				assert.Equal(t, namespace, cwMeasurement.Namespace)
-				assert.Equal(t, metricSlice, cwMeasurement.Metrics)
-				assertDimsEqual(t, dimensions, cwMeasurement.Dimensions)
+				expectedMeasurement := CwMeasurement{
+					Namespace:  namespace,
+					Dimensions: dimensions,
+					Metrics:    metricSlice,
+				}
+				assertCwMeasurementEqual(t, expectedMeasurement, cwMetric.Measurements[i])
 			}
 		})
 	}
@@ -1799,6 +1811,105 @@ func createMetricTestData() consumerdata.MetricsData {
 	}
 }
 
+func TestDedupDimensions(t *testing.T) {
+	rolledUpDims := [][]string{
+		{"a", OTellibDimensionKey},
+		{"b", OTellibDimensionKey},
+		{"c", OTellibDimensionKey},
+	}
+	testCases := []struct {
+		testName string
+		input    [][]string
+		output   [][]string
+	}{
+		{
+			"Single dimension set",
+			[][]string{{"a"}},
+			[][]string{
+				{"a"},
+				{"a", OTellibDimensionKey},
+				{"b", OTellibDimensionKey},
+				{"c", OTellibDimensionKey},
+			},
+		},
+		{
+			"No duplicates",
+			[][]string{{"a"}, {"b", "c"}},
+			[][]string{
+				{"a"},
+				{"b", "c"},
+				{"a", OTellibDimensionKey},
+				{"b", OTellibDimensionKey},
+				{"c", OTellibDimensionKey}},
+		},
+		{
+			"Contains duplicates",
+			[][]string{{"a"}, {"b", "c"}, {"a"}},
+			[][]string{
+				{"a"},
+				{"b", "c"},
+				{"a", OTellibDimensionKey},
+				{"b", OTellibDimensionKey},
+				{"c", OTellibDimensionKey},
+			},
+		},
+		{
+			"Contains duplicates out of order",
+			[][]string{{"a"}, {"b", "c"}, {"c", "b"}},
+			[][]string{
+				{"a"},
+				{"b", "c"},
+				{"a", OTellibDimensionKey},
+				{"b", OTellibDimensionKey},
+				{"c", OTellibDimensionKey},
+			},
+		},
+		{
+			"Contains duplicates w/ rolledupDims",
+			[][]string{
+				{"a"},
+				{"b", "c"},
+				{"a", OTellibDimensionKey},
+				{"b", OTellibDimensionKey},
+			},
+			[][]string{
+				{"a"},
+				{"b", "c"},
+				{"a", OTellibDimensionKey},
+				{"b", OTellibDimensionKey},
+				{"c", OTellibDimensionKey},
+			},
+		},
+		{
+			"Big test case",
+			[][]string{
+				{"a"},
+				{"a", "b", "c"},
+				{"a", "b"},
+				{"b", "a"},
+				{"a"},
+				{"b", "d"},
+			},
+			[][]string{
+				{"a"},
+				{"a", "b", "c"},
+				{"a", "b"},
+				{"b", "d"},
+				{"a", OTellibDimensionKey},
+				{"b", OTellibDimensionKey},
+				{"c", OTellibDimensionKey},
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.testName, func(t *testing.T) {
+			deduped := dedupDimensions(tc.input, rolledUpDims)
+			assertDimsEqual(t, tc.output, deduped)
+		})
+	}
+}
+
 func TestNeedsCalculateRate(t *testing.T) {
 	metric := pdata.NewMetric()
 	metric.InitEmpty()
@@ -1908,5 +2019,21 @@ func BenchmarkTranslateCWMetricToEMF(b *testing.B) {
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
 		TranslateCWMetricToEMF([]*CWMetrics{met}, logger)
+	}
+}
+
+func BenchmarkDedupDimensions(b *testing.B) {
+	input := [][]string{
+		{"label1"},
+		{"label1", "label2"},
+		{"label2", "label1"},
+		{"label2", OTellibDimensionKey},
+	}
+	rolledUpDims := [][]string{
+		{"label1", OTellibDimensionKey},
+		{"label2", OTellibDimensionKey},
+	}
+	for n := 0; n < b.N; n++ {
+		dedupDimensions(input, rolledUpDims)
 	}
 }
