@@ -26,7 +26,7 @@ import (
 	"go.opentelemetry.io/collector/translator/trace/jaeger"
 	"go.uber.org/zap"
 
-	"github.com/open-telemetry/opentelemetry-collector-contrib/internal/common/splunk"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/internal/splunk"
 )
 
 // sapmExporter is a wrapper struct of SAPM exporter
@@ -92,13 +92,13 @@ func (se *sapmExporter) tracesByAccessToken(td pdata.Traces) map[string]pdata.Tr
 		accessToken := ""
 		if !resourceSpan.Resource().IsNil() {
 			attrs := resourceSpan.Resource().Attributes()
-			attributeValue, ok := attrs.Get(splunk.SFxAccessTokenLabel)
-			if ok {
-				attrs.Delete(splunk.SFxAccessTokenLabel)
-				if se.config.AccessTokenPassthrough {
+			if se.config.AccessTokenPassthrough {
+				attributeValue, ok := attrs.Get(splunk.SFxAccessTokenLabel)
+				if ok {
 					accessToken = attributeValue.StringVal()
 				}
 			}
+			attrs.Delete(splunk.SFxAccessTokenLabel)
 		}
 
 		traceForToken, ok := tracesByToken[accessToken]
