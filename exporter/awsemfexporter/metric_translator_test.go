@@ -85,14 +85,14 @@ func TestTranslateOtToCWMetricWithInstrLibrary(t *testing.T) {
 	assert.Equal(t, met.Fields["spanCounter"], 0)
 
 	expectedMeasurement := CwMeasurement{
-		Namespace:  "myServiceNS/myServiceName",
+		Namespace: "myServiceNS/myServiceName",
 		Dimensions: [][]string{
 			{OTellibDimensionKey, "isItAnError", "spanName"},
 			{OTellibDimensionKey},
 			{OTellibDimensionKey, "spanName"},
 			{OTellibDimensionKey, "isItAnError"},
 		},
-		Metrics:    []map[string]string{
+		Metrics: []map[string]string{
 			{
 				"Name": "spanCounter",
 				"Unit": "Count",
@@ -120,14 +120,14 @@ func TestTranslateOtToCWMetricWithoutInstrLibrary(t *testing.T) {
 	assert.Equal(t, met.Fields["spanCounter"], 0)
 
 	expectedMeasurement := CwMeasurement{
-		Namespace:  "myServiceNS/myServiceName",
+		Namespace: "myServiceNS/myServiceName",
 		Dimensions: [][]string{
 			{"isItAnError", "spanName"},
 			{},
 			{"spanName"},
 			{"isItAnError"},
 		},
-		Metrics:    []map[string]string{
+		Metrics: []map[string]string{
 			{
 				"Name": "spanCounter",
 				"Unit": "Count",
