@@ -246,7 +246,7 @@ func getCWMetrics(metric *pdata.Metric, namespace string, instrumentationLibName
 // buildCWMetric builds CWMetric from DataPoint
 func buildCWMetric(dp DataPoint, pmd *pdata.Metric, namespace string, metricSlice []map[string]string, instrumentationLibName string, config *Config) *CWMetrics {
 	dimensionRollupOption := config.DimensionRollupOption
-	mds := config.MetricDeclarations
+	metricDeclarations := config.MetricDeclarations
 
 	labelsMap := dp.LabelsMap()
 	labelsSlice := make([]string, labelsMap.Len(), labelsMap.Len()+1)
@@ -270,10 +270,10 @@ func buildCWMetric(dp DataPoint, pmd *pdata.Metric, namespace string, metricSlic
 
 	// Create list of dimension sets
 	var dimensionsArray [][][]string
-	if len(mds) > 0 {
+	if len(metricDeclarations) > 0 {
 		// Filter metric declarations and map each metric declaration to a list
 		// of dimension sets
-		dimensionsArray = processMetricDeclarations(mds, pmd, labels)
+		dimensionsArray = processMetricDeclarations(metricDeclarations, pmd, labels)
 	} else if instrumentationLibName != noInstrumentationLibraryName {
 		// If no metric declarations defined and OTel instrumentation lib name is defined,
 		// create a single dimension set containing the list of labels +
