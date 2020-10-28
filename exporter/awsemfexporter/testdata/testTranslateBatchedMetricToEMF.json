@@ -1,0 +1,1 @@
+{"Namespace":"kube-system","_aws":{"CloudWatchMetrics":{"Namespace":"kubernetes-service-endpoints","Dimensions":[["Namespace"]],"Metrics":[{"Name":"go_goroutines","Unit":""}]},"Timestamp":1603750966417},"go_goroutines":0}

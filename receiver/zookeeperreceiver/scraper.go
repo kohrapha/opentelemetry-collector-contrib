@@ -1,4 +1,4 @@
-// Copyright 2020, OpenTelemetry Authors
+// Copyright The OpenTelemetry Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,30 +12,32 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package zookeeperreceiver
+package metadata
 
 import (
-	"context"
+	"os"
+	"testing"
 
-	"go.opentelemetry.io/collector/consumer/pdata"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"go.uber.org/zap"
+
+	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/datadogexporter/config"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/datadogexporter/utils/cache"
 )
 
-type zookeeperMetricsScraper struct {
-}
+func TestHost(t *testing.T) {
 
-func newZookeeperMetricsScraper(logger *zap.Logger, config *Config) (*zookeeperMetricsScraper, error) {
-	return &zookeeperMetricsScraper{}, nil
-}
+	logger := zap.NewNop()
 
-func (z *zookeeperMetricsScraper) Initialize(_ context.Context) error {
-	return nil
-}
+	host := GetHost(logger, &config.Config{
+		TagsConfig: config.TagsConfig{Hostname: "test-host"},
+	})
+	assert.Equal(t, *host, "test-host")
+	cache.Cache.Delete(cache.CanonicalHostnameKey)
 
-func (z *zookeeperMetricsScraper) Close(_ context.Context) error {
-	return nil
-}
-
-func (z *zookeeperMetricsScraper) Scrape(_ context.Context) (pdata.ResourceMetricsSlice, error) {
-	return pdata.ResourceMetricsSlice{}, nil
+	host = GetHost(logger, &config.Config{})
+	osHostname, err := os.Hostname()
+	require.NoError(t, err)
+	assert.Equal(t, *host, osHostname)
 }

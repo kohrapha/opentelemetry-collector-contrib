@@ -24,7 +24,6 @@ import (
 	"gopkg.in/zorkian/go-datadog-api.v2"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/datadogexporter/config"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/datadogexporter/metrics"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/datadogexporter/testutils"
 )
 
@@ -80,8 +79,8 @@ func TestProcessMetrics(t *testing.T) {
 
 	require.NoError(t, err)
 
-	ms := []datadog.Metric{
-		metrics.NewGauge(
+	metrics := []datadog.Metric{
+		newGauge(
 			"metric_name",
 			0,
 			0,
@@ -89,13 +88,13 @@ func TestProcessMetrics(t *testing.T) {
 		),
 	}
 
-	exp.processMetrics(ms)
+	exp.processMetrics(metrics)
 
-	assert.Equal(t, "test-host", *ms[0].Host)
-	assert.Equal(t, "test.metric_name", *ms[0].Metric)
+	assert.Equal(t, "test-host", *metrics[0].Host)
+	assert.Equal(t, "test.metric_name", *metrics[0].Metric)
 	assert.ElementsMatch(t,
 		[]string{"key:val", "env:test_env", "key2:val2"},
-		ms[0].Tags,
+		metrics[0].Tags,
 	)
 
 }

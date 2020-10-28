@@ -1,6 +1,6 @@
-receivers:
-  jmx:
-  jmx/all:
+extensions:
+  jmx_metrics:
+  jmx_metrics/all:
     jar_path: myjarpath
     service_url: myserviceurl
     groovy_script: mygroovyscriptpath

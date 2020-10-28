@@ -34,13 +34,9 @@ import (
 	"go.uber.org/zap"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/datadogexporter/config"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/datadogexporter/testutils"
 )
 
 func testTraceExporterHelper(td pdata.Traces, t *testing.T) []string {
-	metricsServer := testutils.DatadogServerMock()
-	defer metricsServer.Close()
-
 	var got []string
 	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
 		assert.Equal(t, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", req.Header.Get("DD-Api-Key"))
@@ -67,11 +63,6 @@ func testTraceExporterHelper(td pdata.Traces, t *testing.T) []string {
 			Hostname: "test_host",
 			Env:      "test_env",
 			Tags:     []string{"key:val"},
-		},
-		Metrics: config.MetricsConfig{
-			TCPAddr: confignet.TCPAddr{
-				Endpoint: metricsServer.URL,
-			},
 		},
 		Traces: config.TracesConfig{
 			SampleRate: 1,
@@ -151,12 +142,8 @@ func testJSONTraceStatsPayload(t *testing.T, rw http.ResponseWriter, req *http.R
 }
 
 func TestNewTraceExporter(t *testing.T) {
-	metricsServer := testutils.DatadogServerMock()
-	defer metricsServer.Close()
-
 	cfg := &config.Config{}
 	cfg.API.Key = "ddog_32_characters_long_api_key1"
-	cfg.Metrics.TCPAddr.Endpoint = metricsServer.URL
 	logger := zap.NewNop()
 
 	// The client should have been created correctly
@@ -166,9 +153,6 @@ func TestNewTraceExporter(t *testing.T) {
 }
 
 func TestPushTraceData(t *testing.T) {
-	metricsServer := testutils.DatadogServerMock()
-	defer metricsServer.Close()
-
 	server := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
 		assert.Equal(t, "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", req.Header.Get("DD-Api-Key"))
 		rw.WriteHeader(http.StatusAccepted)
@@ -183,11 +167,6 @@ func TestPushTraceData(t *testing.T) {
 			Hostname: "test_host",
 			Env:      "test_env",
 			Tags:     []string{"key:val"},
-		},
-		Metrics: config.MetricsConfig{
-			TCPAddr: confignet.TCPAddr{
-				Endpoint: metricsServer.URL,
-			},
 		},
 		Traces: config.TracesConfig{
 			SampleRate: 1,
@@ -229,7 +208,7 @@ func TestTraceAndStatsExporter(t *testing.T) {
 }
 
 func simpleTraces() pdata.Traces {
-	return simpleTracesWithID(pdata.NewTraceID([16]byte{1, 2, 3, 4}))
+	return simpleTracesWithID(pdata.NewTraceID([]byte{1, 2, 3, 4}))
 }
 
 func simpleTracesWithID(traceID pdata.TraceID) pdata.Traces {

@@ -12,6 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+<<<<<<< HEAD:receiver/zookeeperreceiver/scraper.go
+package zookeeperreceiver
+
+import (
+	"context"
+
+	"go.opentelemetry.io/collector/consumer/pdata"
+=======
 package metadata
 
 import (
@@ -20,19 +28,35 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+>>>>>>> b0609985c15cf19d79ac5851f4b9fd70caacebee:exporter/datadogexporter/metadata/host_test.go
 	"go.uber.org/zap"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/datadogexporter/config"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/datadogexporter/utils/cache"
 )
 
+<<<<<<< HEAD:receiver/zookeeperreceiver/scraper.go
+type zookeeperMetricsScraper struct {
+}
+
+func newZookeeperMetricsScraper(logger *zap.Logger, config *Config) (*zookeeperMetricsScraper, error) {
+	return &zookeeperMetricsScraper{}, nil
+}
+
+func (z *zookeeperMetricsScraper) Initialize(_ context.Context) error {
+	return nil
+}
+
+func (z *zookeeperMetricsScraper) Close(_ context.Context) error {
+	return nil
+}
+
+func (z *zookeeperMetricsScraper) Scrape(_ context.Context) (pdata.ResourceMetricsSlice, error) {
+	return pdata.ResourceMetricsSlice{}, nil
+=======
 func TestHost(t *testing.T) {
 
 	logger := zap.NewNop()
-
-	// Start with a fresh cache, the following test would fail
-	// if the cache key is already set.
-	cache.Cache.Delete(cache.CanonicalHostnameKey)
 
 	host := GetHost(logger, &config.Config{
 		TagsConfig: config.TagsConfig{Hostname: "test-host"},
@@ -44,4 +68,5 @@ func TestHost(t *testing.T) {
 	osHostname, err := os.Hostname()
 	require.NoError(t, err)
 	assert.Equal(t, *host, osHostname)
+>>>>>>> b0609985c15cf19d79ac5851f4b9fd70caacebee:exporter/datadogexporter/metadata/host_test.go
 }
