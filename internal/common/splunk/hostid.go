@@ -19,8 +19,6 @@ import (
 
 	"go.opentelemetry.io/collector/consumer/pdata"
 	"go.opentelemetry.io/collector/translator/conventions"
-
-	"github.com/open-telemetry/opentelemetry-collector-contrib/internal/common/cloud"
 )
 
 // HostIDKey represents a host identifier.
@@ -49,6 +47,10 @@ type HostID struct {
 func ResourceToHostID(res pdata.Resource) (HostID, bool) {
 	var cloudAccount, region, hostID, provider string
 
+	if res.IsNil() {
+		return HostID{}, false
+	}
+
 	if attr, ok := res.Attributes().Get(conventions.AttributeCloudAccount); ok {
 		cloudAccount = attr.StringVal()
 	}
@@ -63,7 +65,7 @@ func ResourceToHostID(res pdata.Resource) (HostID, bool) {
 	}
 
 	switch provider {
-	case cloud.ProviderAWS:
+	case conventions.AttributeCloudProviderAWS:
 		if hostID == "" || region == "" || cloudAccount == "" {
 			break
 		}
@@ -71,7 +73,7 @@ func ResourceToHostID(res pdata.Resource) (HostID, bool) {
 			Key: HostIDKeyAWS,
 			ID:  fmt.Sprintf("%s_%s_%s", hostID, region, cloudAccount),
 		}, true
-	case cloud.ProviderGCP:
+	case conventions.AttributeCloudProviderGCP:
 		if cloudAccount == "" || hostID == "" {
 			break
 		}

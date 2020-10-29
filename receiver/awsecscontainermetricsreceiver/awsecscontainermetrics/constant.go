@@ -48,6 +48,7 @@ const (
 	AttributeCPUOnlines         = "cpu.onlines"
 	AttributeCPUReserved        = "cpu.reserved"
 	AttributeCPUUtilized        = "cpu.utilized"
+	AttributeCPUUsageInVCPU     = "cpu.usage.vcpu"
 
 	AttributeNetworkRateRx = "network.rate.rx"
 	AttributeNetworkRateTx = "network.rate.tx"
@@ -65,9 +66,10 @@ const (
 	AttributeStorageWrite = "storage.write_bytes"
 
 	UnitBytes       = "Bytes"
-	UnitMegaBytes   = "MB"
-	UnitNanoSecond  = "NS"
-	UnitBytesPerSec = "Bytes/Sec"
+	UnitMegaBytes   = "Megabytes"
+	UnitNanoSecond  = "Nanoseconds"
+	UnitBytesPerSec = "Bytes/Second"
 	UnitCount       = "Count"
 	UnitVCpu        = "vCPU"
+	UnitPercent     = "Percent"
 )

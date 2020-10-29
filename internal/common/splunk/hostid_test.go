@@ -27,7 +27,7 @@ var (
 		res := pdata.NewResource()
 		res.InitEmpty()
 		attr := res.Attributes()
-		attr.InsertString(conventions.AttributeCloudProvider, "aws")
+		attr.InsertString(conventions.AttributeCloudProvider, conventions.AttributeCloudProviderAWS)
 		attr.InsertString(conventions.AttributeCloudAccount, "1234")
 		attr.InsertString(conventions.AttributeCloudRegion, "us-west-2")
 		attr.InsertString(conventions.AttributeHostID, "i-abcd")
@@ -37,7 +37,7 @@ var (
 		res := pdata.NewResource()
 		res.InitEmpty()
 		attr := res.Attributes()
-		attr.InsertString(conventions.AttributeCloudProvider, "aws")
+		attr.InsertString(conventions.AttributeCloudProvider, conventions.AttributeCloudProviderAWS)
 		attr.InsertString(conventions.AttributeCloudAccount, "1234")
 		attr.InsertString(conventions.AttributeCloudRegion, "us-west-2")
 		attr.InsertString(conventions.AttributeHostID, "i-abcd")
@@ -48,7 +48,7 @@ var (
 		res := pdata.NewResource()
 		res.InitEmpty()
 		attr := res.Attributes()
-		attr.InsertString(conventions.AttributeCloudProvider, "aws")
+		attr.InsertString(conventions.AttributeCloudProvider, conventions.AttributeCloudProviderAWS)
 		attr.InsertString(conventions.AttributeHostID, "i-abcd")
 		return res
 	}()
@@ -56,7 +56,7 @@ var (
 		res := pdata.NewResource()
 		res.InitEmpty()
 		attr := res.Attributes()
-		attr.InsertString(conventions.AttributeCloudProvider, "gcp")
+		attr.InsertString(conventions.AttributeCloudProvider, conventions.AttributeCloudProviderGCP)
 		attr.InsertString(conventions.AttributeCloudAccount, "1234")
 		attr.InsertString(conventions.AttributeHostID, "i-abcd")
 		return res
@@ -65,7 +65,7 @@ var (
 		res := pdata.NewResource()
 		res.InitEmpty()
 		attr := res.Attributes()
-		attr.InsertString(conventions.AttributeCloudProvider, "gcp")
+		attr.InsertString(conventions.AttributeCloudProvider, conventions.AttributeCloudProviderGCP)
 		attr.InsertString(conventions.AttributeCloudAccount, "1234")
 		return res
 	}()
@@ -97,6 +97,12 @@ func TestResourceToHostID(t *testing.T) {
 		want HostID
 		ok   bool
 	}{
+		{
+			name: "nil resource",
+			args: args{pdata.NewResource()},
+			want: HostID{},
+			ok:   false,
+		},
 		{
 			name: "ec2",
 			args: args{ec2Resource},

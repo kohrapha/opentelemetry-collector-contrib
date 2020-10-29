@@ -2,6 +2,8 @@
 
 StatsD receiver for ingesting StatsD messages into the OpenTelemetry Collector.
 
+Supported pipeline types: metrics
+
 > :construction: This receiver is currently in **BETA**.
 
 ## Configuration
@@ -45,9 +47,10 @@ General format is:
 
 `<name>:<value>|g|@<sample-rate>|#<tag1-key>:<tag1-value>`
 
-<!-- ### Timer/Histogram
+### Timer
 
-`<name>:<value>|<ms/h>|@<sample-rate>|#<tag1-key>:<tag1-value>` -->
+`<name>:<value>|ms|@<sample-rate>|#<tag1-key>:<tag1-value>`
+
 
 ## Testing
 
