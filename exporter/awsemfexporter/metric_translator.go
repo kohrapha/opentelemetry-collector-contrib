@@ -168,11 +168,11 @@ func TranslateOtToCWMetric(rm *pdata.ResourceMetrics, dimensionRollupOption stri
 				continue
 			}
 			cwMetrics := getCWMetrics(&metric, namespace, instrumentationLibName, dimensionRollupOption)
-			cwMetricList = append(cwMetricList, cwMetrics...)
+			cwMetricLists = append(cwMetricLists, cwMetrics...)
 			batchCWMetrics(cwMetrics, groupedCWMetricMap, cwMetricsMap)
 		}
 	}
-	return cwMetricList, totalDroppedMetrics
+	return cwMetricLists, totalDroppedMetrics
 }
 
 func batchCWMetrics(cwMetricList []*CWMetrics, groupedCWMetricMap map[string]*GroupedCWMetric, cwMetricsMap map[string]*CWMetrics) {
