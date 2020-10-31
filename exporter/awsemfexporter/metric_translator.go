@@ -62,6 +62,7 @@ type CWMetrics struct {
 	Fields       map[string]interface{}
 }
 
+// GroupedCWMetric defines 
 type GroupedCWMetric struct {
 	Namespace    string
 	Metrics      map[string]interface{}
@@ -128,7 +129,7 @@ func (dps DoubleHistogramDataPointSlice) At(i int) DataPoint {
 
 // TranslateOtToCWMetric converts OT metrics to CloudWatch Metric format
 func TranslateOtToCWMetric(rm *pdata.ResourceMetrics, dimensionRollupOption string, cwMetricsMap map[string]*CWMetrics, groupedCWMetricMap map[string]*GroupedCWMetric, namespace string) ([]*CWMetrics, int) {
-	var cwMetricLists []*CWMetrics
+	var cwMetricList []*CWMetrics
 	totalDroppedMetrics := 0
 	var instrumentationLibName string
 
@@ -168,16 +169,23 @@ func TranslateOtToCWMetric(rm *pdata.ResourceMetrics, dimensionRollupOption stri
 				continue
 			}
 			cwMetrics := getCWMetrics(&metric, namespace, instrumentationLibName, dimensionRollupOption)
-			cwMetricLists = append(cwMetricLists, cwMetrics...)
+			cwMetricList = append(cwMetricList, cwMetrics...)
 			batchCWMetrics(cwMetrics, groupedCWMetricMap, cwMetricsMap)
 		}
 	}
-	return cwMetricLists, totalDroppedMetrics
+	return cwMetricList, totalDroppedMetrics
 }
 
+// batchCWMetrics takes in list of CWMetrics and populates map of CWMetrics and GroupedCWMetrics
 func batchCWMetrics(cwMetricList []*CWMetrics, groupedCWMetricMap map[string]*GroupedCWMetric, cwMetricsMap map[string]*CWMetrics) {
 	for _, met := range cwMetricList {
-		if len(met.Measurements[0].Dimensions[0]) > 0 {
+		if met == nil || met.Measurements == nil { 
+			fmt.Println("Invalid CW metric")
+			continue
+		} else if len(met.Measurements) > 1 || len(met.Measurements) == 0 {
+			fmt.Println("Invalid CW metric measurement size")
+			continue
+		} else {  // metric with non-empty dimension set
 			key := strings.Join(met.Measurements[0].Dimensions[0], "")
 			if _, ok := cwMetricsMap[key]; ok {
 				for _, v := range met.Measurements[0].Metrics {
@@ -185,7 +193,7 @@ func batchCWMetrics(cwMetricList []*CWMetrics, groupedCWMetricMap map[string]*Gr
 					groupedCWMetricMap[key].MetricUnits[v["Name"]] = v["Unit"]
 				}
 			} else {
-				cwMetricsMap[key]=met
+				cwMetricsMap[key] = met
 				metricMap := make(map[string]interface{})
 				dimensionMap := make(map[string]interface{})
 				metricUnits := make(map[string]string)
@@ -214,7 +222,7 @@ func batchCWMetrics(cwMetricList []*CWMetrics, groupedCWMetricMap map[string]*Gr
 }
 
 func TranslateBatchedMetricToEMF(groupedCWMetricMap map[string]*GroupedCWMetric) []*LogEvent {
-	// convert CWMetric into map format for compatible with PLE input
+	// convert map of GroupedCWMetric objects into map format for compatible with PLE input
 	ples := make([]*LogEvent, 0, maximumLogEventsPerPut)
 	for _, v := range groupedCWMetricMap {
 		fieldMap := make(map[string]interface{})
@@ -265,10 +273,10 @@ func TranslateBatchedMetricToEMF(groupedCWMetricMap map[string]*GroupedCWMetric)
 	return ples
 }
 
-func TranslateCWMetricToEMF(cwMetricLists []*CWMetrics) []*LogEvent {
+func TranslateCWMetricToEMF(cwMetricList []*CWMetrics) []*LogEvent {
 	// convert CWMetric into map format for compatible with PLE input
 	ples := make([]*LogEvent, 0, maximumLogEventsPerPut)
-	for _, met := range cwMetricLists {
+	for _, met := range cwMetricList {
 		cwmMap := make(map[string]interface{})
 		fieldMap := met.Fields
 		cwmMap["CloudWatchMetrics"] = met.Measurements
