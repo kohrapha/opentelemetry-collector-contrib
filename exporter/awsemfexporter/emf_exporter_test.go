@@ -116,7 +116,7 @@ func TestConsumeMetrics(t *testing.T) {
 		},
 	}
 	md := internaldata.OCToMetrics(mdata)
-	require.Error(t, exp.ConsumeMetrics(ctx, md))
+	assert.Nil(t, exp.ConsumeMetrics(ctx, md))
 	require.NoError(t, exp.Shutdown(ctx))
 }
 
@@ -214,10 +214,6 @@ func TestPushMetricsDataWithErr(t *testing.T) {
 	md := internaldata.OCToMetrics(mdata)
 	_, err = exp.(*emfExporter).pushMetricsData(ctx, md)
 	assert.NotNil(t, err)
-	_, err = exp.(*emfExporter).pushMetricsData(ctx, md)
-	assert.NotNil(t, err)
-	_, err = exp.(*emfExporter).pushMetricsData(ctx, md)
-	assert.Nil(t, err)
 	err = exp.(*emfExporter).Shutdown(ctx)
 	assert.Nil(t, err)
 }

@@ -60,7 +60,9 @@ func TestTranslateOtToCWMetricWithInstrLibrary(t *testing.T) {
 	ilm := ilms.At(0)
 	ilm.InstrumentationLibrary().InitEmpty()
 	ilm.InstrumentationLibrary().SetName("cloudwatch-lib")
-	cwm, totalDroppedMetrics := TranslateOtToCWMetric(&rm, ZeroAndSingleDimensionRollup, "")
+	cwMetricsMap := make(map[string]*CWMetrics)
+	groupedCWMetricMap := make(map[string]*GroupedCWMetric)
+	cwm, totalDroppedMetrics := TranslateOtToCWMetric(&rm, ZeroAndSingleDimensionRollup, cwMetricsMap, groupedCWMetricMap, "")
 	assert.Equal(t, 1, totalDroppedMetrics)
 	assert.NotNil(t, cwm)
 	assert.Equal(t, 5, len(cwm))
@@ -94,7 +96,9 @@ func TestTranslateOtToCWMetricWithoutInstrLibrary(t *testing.T) {
 
 	md := createMetricTestData()
 	rm := internaldata.OCToMetrics(md).ResourceMetrics().At(0)
-	cwm, totalDroppedMetrics := TranslateOtToCWMetric(&rm, ZeroAndSingleDimensionRollup, "")
+	cwMetricsMap := make(map[string]*CWMetrics)
+	groupedCWMetricMap := make(map[string]*GroupedCWMetric)
+	cwm, totalDroppedMetrics := TranslateOtToCWMetric(&rm, ZeroAndSingleDimensionRollup, cwMetricsMap, groupedCWMetricMap, "")
 	assert.Equal(t, 1, totalDroppedMetrics)
 	assert.NotNil(t, cwm)
 	assert.Equal(t, 5, len(cwm))
@@ -139,7 +143,9 @@ func TestTranslateOtToCWMetricWithNameSpace(t *testing.T) {
 		Metrics: []*metricspb.Metric{},
 	}
 	rm := internaldata.OCToMetrics(md).ResourceMetrics().At(0)
-	cwm, totalDroppedMetrics := TranslateOtToCWMetric(&rm, ZeroAndSingleDimensionRollup, "")
+	cwMetricsMap := make(map[string]*CWMetrics)
+	groupedCWMetricMap := make(map[string]*GroupedCWMetric)
+	cwm, totalDroppedMetrics := TranslateOtToCWMetric(&rm, ZeroAndSingleDimensionRollup, cwMetricsMap, groupedCWMetricMap, "")
 	assert.Equal(t, 0, totalDroppedMetrics)
 	assert.Nil(t, cwm)
 	assert.Equal(t, 0, len(cwm))
@@ -231,7 +237,7 @@ func TestTranslateOtToCWMetricWithNameSpace(t *testing.T) {
 		},
 	}
 	rm = internaldata.OCToMetrics(md).ResourceMetrics().At(0)
-	cwm, totalDroppedMetrics = TranslateOtToCWMetric(&rm, ZeroAndSingleDimensionRollup, "")
+	cwm, totalDroppedMetrics = TranslateOtToCWMetric(&rm, ZeroAndSingleDimensionRollup, cwMetricsMap, groupedCWMetricMap, "")
 	assert.Equal(t, 0, totalDroppedMetrics)
 	assert.NotNil(t, cwm)
 	assert.Equal(t, 1, len(cwm))
@@ -1293,20 +1299,24 @@ func BenchmarkTranslateOtToCWMetricWithInstrLibrary(b *testing.B) {
 	ilm := ilms.At(0)
 	ilm.InstrumentationLibrary().InitEmpty()
 	ilm.InstrumentationLibrary().SetName("cloudwatch-lib")
+	cwMetricsMap := make(map[string]*CWMetrics)
+	groupedCWMetricMap := make(map[string]*GroupedCWMetric)
 
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		TranslateOtToCWMetric(&rm, ZeroAndSingleDimensionRollup, "")
+		TranslateOtToCWMetric(&rm, ZeroAndSingleDimensionRollup, cwMetricsMap, groupedCWMetricMap, "")
 	}
 }
 
 func BenchmarkTranslateOtToCWMetricWithoutInstrLibrary(b *testing.B) {
 	md := createMetricTestData()
 	rm := internaldata.OCToMetrics(md).ResourceMetrics().At(0)
+	cwMetricsMap := make(map[string]*CWMetrics)
+	groupedCWMetricMap := make(map[string]*GroupedCWMetric)
 
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		TranslateOtToCWMetric(&rm, ZeroAndSingleDimensionRollup, "")
+		TranslateOtToCWMetric(&rm, ZeroAndSingleDimensionRollup, cwMetricsMap, groupedCWMetricMap, "")
 	}
 }
 
@@ -1323,12 +1333,12 @@ func BenchmarkTranslateOtToCWMetricWithNamespace(b *testing.B) {
 		Metrics: []*metricspb.Metric{},
 	}
 	rm := internaldata.OCToMetrics(md).ResourceMetrics().At(0)
-	cwmMap := make(map[string]*CWMetrics)
-	batchedCwmMap := make(map[string]*GroupedCWMetric)
-	cwm, totalDroppedMetrics := TranslateOtToCWMetric(&rm, ZeroAndSingleDimensionRollup, cwmMap, batchedCwmMap, "")
-	assert.Equal(t, 0, totalDroppedMetrics)
-	assert.Nil(t, cwm)
-	assert.Equal(t, 0, len(cwm))
+	cwMetricsMap := make(map[string]*CWMetrics)
+	groupedCWMetricMap := make(map[string]*GroupedCWMetric)
+	cwm, totalDroppedMetrics := TranslateOtToCWMetric(&rm, ZeroAndSingleDimensionRollup, cwMetricsMap, groupedCWMetricMap, "")
+	assert.Equal(b, 0, totalDroppedMetrics)
+	assert.Nil(b, cwm)
+	assert.Equal(b, 0, len(cwm))
 	md = consumerdata.MetricsData{
 		Node: &commonpb.Node{
 			LibraryInfo: &commonpb.LibraryInfo{ExporterVersion: "SomeVersion"},
@@ -1417,14 +1427,14 @@ func BenchmarkTranslateOtToCWMetricWithNamespace(b *testing.B) {
 		},
 	}
 	rm = internaldata.OCToMetrics(md).ResourceMetrics().At(0)
-	cwm, totalDroppedMetrics = TranslateOtToCWMetric(&rm, ZeroAndSingleDimensionRollup, cwmMap, batchedCwmMap, "")
-	assert.Equal(t, 0, totalDroppedMetrics)
-	assert.NotNil(t, cwm)
-	assert.Equal(t, 1, len(cwm))
+	cwm, totalDroppedMetrics = TranslateOtToCWMetric(&rm, ZeroAndSingleDimensionRollup, cwMetricsMap, groupedCWMetricMap, "")
+	assert.Equal(b, 0, totalDroppedMetrics)
+	assert.NotNil(b, cwm)
+	assert.Equal(b, 1, len(cwm))
 
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		TranslateOtToCWMetric(&rm, ZeroAndSingleDimensionRollup, "")
+		TranslateOtToCWMetric(&rm, ZeroAndSingleDimensionRollup, cwMetricsMap, groupedCWMetricMap, "")
 	}
 }
 
@@ -1477,27 +1487,6 @@ func TestBatchCWMetrics(t *testing.T) {
 	assert.Equal(t, len(groupedCWMetricMap[key].Metrics), 2)
 }
 
-func TestTranslateCWMetricToEMF(t *testing.T) {
-	cwMeasurement := CwMeasurement{
-		Namespace:  "test-emf",
-		Dimensions: [][]string{{"OTelLib"}, {"OTelLib", "spanName"}},
-		Metrics: []map[string]string{{
-			"Name": "spanCounter",
-			"Unit": "Count",
-		}},
-	}
-	timestamp := int64(1596151098037)
-	fields := make(map[string]interface{})
-	fields["OTelLib"] = "cloudwatch-otel"
-	fields["spanName"] = "test"
-	fields["spanCounter"] = 0
-
-	met := &CWMetrics{
-		Timestamp:    timestamp,
-		Fields:       fields,
-		Measurements: []CwMeasurement{cwMeasurement},
-	}
-
 func TestTranslateBatchedMetricToEMF(t *testing.T) {
 	dimensions := map[string]interface{} {"Namespace": "kube-system",}
 	metrics := map[string]interface{} {"go_goroutines": 0,}
@@ -1519,35 +1508,4 @@ func TestTranslateBatchedMetricToEMF(t *testing.T) {
 	inputLogEvent := TranslateBatchedMetricToEMF(res)
 
 	assert.Equal(t, readFromFile("testdata/testTranslateBatchedMetricToEMF.json"), *inputLogEvent[0].InputLogEvent.Message, "Expect to be equal")
-}
-
-func TestCalculateRate(t *testing.T) {
-	prevValue := int64(0)
-	curValue := int64(10)
-	fields := make(map[string]interface{})
-	fields["OTLib"] = "cloudwatch-otel"
-	fields["spanName"] = "test"
-	fields["spanCounter"] = prevValue
-	fields["type"] = "Int64"
-	prevTime := time.Now().UnixNano() / int64(time.Millisecond)
-	curTime := time.Unix(0, prevTime*int64(time.Millisecond)).Add(time.Second*10).UnixNano() / int64(time.Millisecond)
-	rate := calculateRate(fields, prevValue, prevTime)
-	assert.Equal(t, 0, rate)
-	rate = calculateRate(fields, curValue, curTime)
-	assert.Equal(t, int64(1), rate)
-
-	prevDoubleValue := 0.0
-	curDoubleValue := 5.0
-	fields["type"] = "Float64"
-	rate = calculateRate(fields, prevDoubleValue, prevTime)
-	assert.Equal(t, 0, rate)
-	rate = calculateRate(fields, curDoubleValue, curTime)
-	assert.Equal(t, 0.5, rate)
-}
-
-func readFromFile(filename string) string {
-	data, err := ioutil.ReadFile(filename)
-	if err != nil {
-		panic(err)
-	}
 }
