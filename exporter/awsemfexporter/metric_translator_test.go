@@ -574,9 +574,20 @@ func TestTranslateOtToCWMetricWithFiltering(t *testing.T) {
 			1,
 		},
 		{
-			"No match",
+			"No match w/ rollup",
 			[]string{"invalid"},
 			ZeroAndSingleDimensionRollup,
+			[][]string{
+				{OTellibDimensionKey, "spanName"},
+				{OTellibDimensionKey, "isItAnError"},
+				{OTellibDimensionKey},
+			},
+			1,
+		},
+		{
+			"No match w/ no rollup",
+			[]string{"invalid"},
+			"",
 			nil,
 			0,
 		},
@@ -1530,7 +1541,7 @@ func TestBuildCWMetricWithMetricDeclarations(t *testing.T) {
 		labels                map[string]string
 		metricDeclarations    []*MetricDeclaration
 		dimensionRollupOption string
-		expectedDims          [][][]string
+		expectedDims          [][]string
 	}{
 		{
 			"Single label w/ no rollup",
@@ -1542,7 +1553,7 @@ func TestBuildCWMetricWithMetricDeclarations(t *testing.T) {
 				},
 			},
 			"",
-			[][][]string{{{"a"}}},
+			[][]string{{"a"}},
 		},
 		{
 			"Single label + OTelLib w/ no rollup",
@@ -1554,7 +1565,7 @@ func TestBuildCWMetricWithMetricDeclarations(t *testing.T) {
 				},
 			},
 			"",
-			[][][]string{{{"a", OTelLib}}},
+			[][]string{{"a", OTelLib}},
 		},
 		{
 			"Single label w/ single rollup",
@@ -1566,7 +1577,7 @@ func TestBuildCWMetricWithMetricDeclarations(t *testing.T) {
 				},
 			},
 			SingleDimensionRollupOnly,
-			[][][]string{{{"a"}, {"a", OTelLib}}},
+			[][]string{{"a"}, {"a", OTelLib}},
 		},
 		{
 			"Single label w/ zero/single rollup",
@@ -1578,7 +1589,7 @@ func TestBuildCWMetricWithMetricDeclarations(t *testing.T) {
 				},
 			},
 			ZeroAndSingleDimensionRollup,
-			[][][]string{{{"a"}, {"a", OTelLib}, {OTelLib}}},
+			[][]string{{"a"}, {"a", OTelLib}, {OTelLib}},
 		},
 		{
 			"No matching metric name",
@@ -1602,7 +1613,7 @@ func TestBuildCWMetricWithMetricDeclarations(t *testing.T) {
 				},
 			},
 			"",
-			[][][]string{{{"a"}}},
+			[][]string{{"a"}},
 		},
 		{
 			"multiple labels w/ rollup",
@@ -1614,12 +1625,12 @@ func TestBuildCWMetricWithMetricDeclarations(t *testing.T) {
 				},
 			},
 			ZeroAndSingleDimensionRollup,
-			[][][]string{{
+			[][]string{
 				{"a"},
 				{OTelLib, "a"},
 				{OTelLib, "b"},
 				{OTelLib},
-			}},
+			},
 		},
 		{
 			"multiple labels + multiple dimensions w/ no rollup",
@@ -1631,7 +1642,7 @@ func TestBuildCWMetricWithMetricDeclarations(t *testing.T) {
 				},
 			},
 			"",
-			[][][]string{{{"a", "b"}, {"b"}}},
+			[][]string{{"a", "b"}, {"b"}},
 		},
 		{
 			"multiple labels + multiple dimensions + OTelLib w/ no rollup",
@@ -1643,7 +1654,7 @@ func TestBuildCWMetricWithMetricDeclarations(t *testing.T) {
 				},
 			},
 			"",
-			[][][]string{{{"a", "b"}, {"b", OTelLib}, {OTelLib}}},
+			[][]string{{"a", "b"}, {"b", OTelLib}, {OTelLib}},
 		},
 		{
 			"multiple labels + multiple dimensions w/ rollup",
@@ -1655,13 +1666,13 @@ func TestBuildCWMetricWithMetricDeclarations(t *testing.T) {
 				},
 			},
 			ZeroAndSingleDimensionRollup,
-			[][][]string{{
+			[][]string{
 				{"a", "b"},
 				{"b"},
 				{OTelLib, "a"},
 				{OTelLib, "b"},
 				{OTelLib},
-			}},
+			},
 		},
 		{
 			"multiple labels, multiple dimensions w/ invalid dimension",
@@ -1673,12 +1684,12 @@ func TestBuildCWMetricWithMetricDeclarations(t *testing.T) {
 				},
 			},
 			ZeroAndSingleDimensionRollup,
-			[][][]string{{
+			[][]string{
 				{"b"},
 				{OTelLib, "a"},
 				{OTelLib, "b"},
 				{OTelLib},
-			}},
+			},
 		},
 		{
 			"multiple labels, multiple dimensions w/ missing dimension",
@@ -1690,14 +1701,14 @@ func TestBuildCWMetricWithMetricDeclarations(t *testing.T) {
 				},
 			},
 			ZeroAndSingleDimensionRollup,
-			[][][]string{{
+			[][]string{
 				{"a", "b"},
 				{"b"},
 				{OTelLib, "a"},
 				{OTelLib, "b"},
 				{OTelLib, "c"},
 				{OTelLib},
-			}},
+			},
 		},
 		{
 			"multiple metric declarations w/ no rollup",
@@ -1717,10 +1728,12 @@ func TestBuildCWMetricWithMetricDeclarations(t *testing.T) {
 				},
 			},
 			"",
-			[][][]string{
-				{{"a", "b"}, {"b"}},
-				{{"a", "c"}, {"b"}, {"c"}},
-				{{"b", "c"}},
+			[][]string{
+				{"a", "b"},
+				{"b"},
+				{"a", "c"},
+				{"c"},
+				{"b", "c"},
 			},
 		},
 		{
@@ -1741,31 +1754,16 @@ func TestBuildCWMetricWithMetricDeclarations(t *testing.T) {
 				},
 			},
 			ZeroAndSingleDimensionRollup,
-			[][][]string{
-				{
-					{"a", "b"},
-					{"b"},
-					{OTelLib, "a"},
-					{OTelLib, "b"},
-					{OTelLib, "c"},
-					{OTelLib},
-				},
-				{
-					{"a", "c"},
-					{"b"},
-					{"c"},
-					{OTelLib, "a"},
-					{OTelLib, "b"},
-					{OTelLib, "c"},
-					{OTelLib},
-				},
-				{
-					{"b", "c"},
-					{OTelLib, "a"},
-					{OTelLib, "b"},
-					{OTelLib, "c"},
-					{OTelLib},
-				},
+			[][]string{
+				{"a", "b"},
+				{"b"},
+				{OTelLib, "a"},
+				{OTelLib, "b"},
+				{OTelLib, "c"},
+				{OTelLib},
+				{"a", "c"},
+				{"c"},
+				{"b", "c"},
 			},
 		},
 		{
@@ -1782,8 +1780,9 @@ func TestBuildCWMetricWithMetricDeclarations(t *testing.T) {
 				},
 			},
 			"",
-			[][][]string{
-				{{"a", "b"}, {"b"}},
+			[][]string{
+				{"a", "b"},
+				{"b"},
 			},
 		},
 		{
@@ -1847,14 +1846,16 @@ func TestBuildCWMetricWithMetricDeclarations(t *testing.T) {
 			assert.Equal(t, expectedFields, cwMetric.Fields)
 
 			// Check CW measurement
-			assert.Equal(t, len(tc.expectedDims), len(cwMetric.Measurements))
-			for i, dimensions := range tc.expectedDims {
+			if tc.expectedDims == nil {
+				assert.Equal(t, 0, len(cwMetric.Measurements))
+			} else {
+				assert.Equal(t, 1, len(cwMetric.Measurements))
 				expectedMeasurement := CwMeasurement{
 					Namespace:  namespace,
-					Dimensions: dimensions,
+					Dimensions: tc.expectedDims,
 					Metrics:    metricSlice,
 				}
-				assertCwMeasurementEqual(t, expectedMeasurement, cwMetric.Measurements[i])
+				assertCwMeasurementEqual(t, expectedMeasurement, cwMetric.Measurements[0])
 			}
 		})
 	}
@@ -1957,13 +1958,14 @@ func TestDimensionRollup(t *testing.T) {
 		{
 			"zero + single dim w/ instrumentation library name",
 			ZeroAndSingleDimensionRollup,
-			[]string{"a", "b", "c"},
+			[]string{"a", "b", "c", "A"},
 			"cloudwatch-otel",
 			[][]string{
 				{OTellibDimensionKey},
 				{OTellibDimensionKey, "a"},
 				{OTellibDimensionKey, "b"},
 				{OTellibDimensionKey, "c"},
+				{OTellibDimensionKey, "A"},
 			},
 		},
 		{
@@ -1985,106 +1987,7 @@ func TestDimensionRollup(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.testName, func(t *testing.T) {
 			rolledUp := dimensionRollup(tc.dimensionRollupOption, tc.dims, tc.instrumentationLibName)
-			assert.Equal(t, tc.expected, rolledUp)
-		})
-	}
-}
-
-func TestDedupDimensions(t *testing.T) {
-	rolledUpDims := [][]string{
-		{"a", OTellibDimensionKey},
-		{"b", OTellibDimensionKey},
-		{"c", OTellibDimensionKey},
-	}
-	testCases := []struct {
-		testName string
-		input    [][]string
-		output   [][]string
-	}{
-		{
-			"Single dimension set",
-			[][]string{{"a"}},
-			[][]string{
-				{"a"},
-				{"a", OTellibDimensionKey},
-				{"b", OTellibDimensionKey},
-				{"c", OTellibDimensionKey},
-			},
-		},
-		{
-			"No duplicates",
-			[][]string{{"a"}, {"b", "c"}},
-			[][]string{
-				{"a"},
-				{"b", "c"},
-				{"a", OTellibDimensionKey},
-				{"b", OTellibDimensionKey},
-				{"c", OTellibDimensionKey}},
-		},
-		{
-			"Contains duplicates",
-			[][]string{{"a"}, {"b", "c"}, {"a"}},
-			[][]string{
-				{"a"},
-				{"b", "c"},
-				{"a", OTellibDimensionKey},
-				{"b", OTellibDimensionKey},
-				{"c", OTellibDimensionKey},
-			},
-		},
-		{
-			"Contains duplicates out of order",
-			[][]string{{"a"}, {"b", "c"}, {"c", "b"}},
-			[][]string{
-				{"a"},
-				{"b", "c"},
-				{"a", OTellibDimensionKey},
-				{"b", OTellibDimensionKey},
-				{"c", OTellibDimensionKey},
-			},
-		},
-		{
-			"Contains duplicates w/ rolledupDims",
-			[][]string{
-				{"a"},
-				{"b", "c"},
-				{"a", OTellibDimensionKey},
-				{"b", OTellibDimensionKey},
-			},
-			[][]string{
-				{"a"},
-				{"b", "c"},
-				{"a", OTellibDimensionKey},
-				{"b", OTellibDimensionKey},
-				{"c", OTellibDimensionKey},
-			},
-		},
-		{
-			"Big test case",
-			[][]string{
-				{"a"},
-				{"a", "b", "c"},
-				{"a", "b"},
-				{"b", "a"},
-				{"a"},
-				{"b", "d"},
-			},
-			[][]string{
-				{"a"},
-				{"a", "b", "c"},
-				{"a", "b"},
-				{"b", "d"},
-				{"a", OTellibDimensionKey},
-				{"b", OTellibDimensionKey},
-				{"c", OTellibDimensionKey},
-			},
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.testName, func(t *testing.T) {
-			deduped := dedupDimensions(tc.input, rolledUpDims)
-			assertDimsEqual(t, tc.output, deduped)
+			assertDimsEqual(t, tc.expected, rolledUp)
 		})
 	}
 }
@@ -2206,21 +2109,5 @@ func BenchmarkDimensionRollup(b *testing.B) {
 	dimensions := []string{"a", "b", "c"}
 	for n := 0; n < b.N; n++ {
 		dimensionRollup(ZeroAndSingleDimensionRollup, dimensions, "cloudwatch-otel")
-	}
-}
-
-func BenchmarkDedupDimensions(b *testing.B) {
-	input := [][]string{
-		{"label1"},
-		{"label1", "label2"},
-		{"label2", "label1"},
-		{"label2", OTellibDimensionKey},
-	}
-	rolledUpDims := [][]string{
-		{"label1", OTellibDimensionKey},
-		{"label2", OTellibDimensionKey},
-	}
-	for n := 0; n < b.N; n++ {
-		dedupDimensions(input, rolledUpDims)
 	}
 }
