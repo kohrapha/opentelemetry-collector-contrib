@@ -171,7 +171,6 @@ func (emf *emfExporter) Start(ctx context.Context, host component.Host) error {
 
 func generateLogEventFromMetric(metric pdata.Metrics, dimensionRollupOption string, namespace string) ([]*LogEvent, int, string) {
 	rms := metric.ResourceMetrics()
-	cwMetricLists := []*CWMetrics{}
 	var cwm []*CWMetrics
 	var totalDroppedMetrics int
 	cwMetricsMap := make(map[string]*CWMetrics)
@@ -186,8 +185,6 @@ func generateLogEventFromMetric(metric pdata.Metrics, dimensionRollupOption stri
 		if len(cwm) > 0 && len(cwm[0].Measurements) > 0 {
 			namespace = cwm[0].Measurements[0].Namespace
 		}
-		// append all datapoint metrics in the request into CWMetric list
-		cwMetricLists = append(cwMetricLists, cwm...)
 	}
 
 	return TranslateBatchedMetricToEMF(groupedCWMetricMap), totalDroppedMetrics, namespace
