@@ -170,24 +170,10 @@ func (emf *emfExporter) Start(ctx context.Context, host component.Host) error {
 }
 
 func generateLogEventFromMetric(metric pdata.Metrics, dimensionRollupOption string, namespace string) ([]*LogEvent, int, string) {
-	rms := metric.ResourceMetrics()
-	var cwm []*CWMetrics
 	var totalDroppedMetrics int
-	cwMetricsMap := make(map[string]*CWMetrics)
-	groupedCWMetricMap := make(map[string]*GroupedCWMetric) 
-
-	for i := 0; i < rms.Len(); i++ {
-		rm := rms.At(i)
-		if rm.IsNil() {
-			continue
-		}
-		cwm, totalDroppedMetrics = TranslateOtToCWMetric(&rm, dimensionRollupOption, cwMetricsMap, groupedCWMetricMap, namespace)
-		if len(cwm) > 0 && len(cwm[0].Measurements) > 0 {
-			namespace = cwm[0].Measurements[0].Namespace
-		}
-	}
-
-	return TranslateBatchedMetricToEMF(groupedCWMetricMap), totalDroppedMetrics, namespace
+	groupedMetricMap := make(map[string]*GroupedMetric)
+	TranslateOtToGroupedMetric(metric, groupedMetricMap)
+	return TranslateBatchedMetricToEMF(groupedMetricMap), totalDroppedMetrics, namespace
 }
 
 func wrapErrorIfBadRequest(err *error) error {

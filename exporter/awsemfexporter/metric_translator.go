@@ -44,8 +44,6 @@ const (
 	// DimensionRollupOptions
 	ZeroAndSingleDimensionRollup = "ZeroAndSingleDimensionRollup"
 	SingleDimensionRollupOnly    = "SingleDimensionRollupOnly"
-
-	FakeMetricValue = 0
 )
 
 var currentState = mapwithexpiry.NewMapWithExpiry(CleanInterval)
@@ -55,24 +53,22 @@ type rateState struct {
 	timestamp int64
 }
 
-// CWMetrics defines
-type CWMetrics struct {
-	Measurements []CwMeasurement
-	Timestamp    int64
-	Fields       map[string]interface{}
+// MetricInfo defines
+type MetricInfo struct {
+	Value  interface{}
+	Unit   string
 }
 
-// GroupedCWMetric defines 
-type GroupedCWMetric struct {
+// GroupedMetric defines
+type GroupedMetric struct {
 	Namespace    string
-	Metrics      map[string]interface{}
 	Timestamp    int64
-	Dimensions   map[string]interface{}
-	MetricUnits  map[string]string
+	Labels      map[string]interface{}
+	Metrics     map[string]MetricInfo
 }
 
-// CwMeasurement defines
-type CwMeasurement struct {
+// CWMeasurement defines
+type CWMeasurement struct {
 	Namespace  string
 	Dimensions [][]string
 	Metrics    []map[string]string
@@ -127,12 +123,8 @@ func (dps DoubleHistogramDataPointSlice) At(i int) DataPoint {
 	return dps.DoubleHistogramDataPointSlice.At(i)
 }
 
-// TranslateOtToCWMetric converts OT metrics to CloudWatch Metric format
-func TranslateOtToCWMetric(rm *pdata.ResourceMetrics, dimensionRollupOption string, cwMetricsMap map[string]*CWMetrics, groupedCWMetricMap map[string]*GroupedCWMetric, namespace string) ([]*CWMetrics, int) {
-	var cwMetricList []*CWMetrics
-	totalDroppedMetrics := 0
-	var instrumentationLibName string
-
+func GetNamespaceFromMetric(rm *pdata.ResourceMetrics) (string) {
+	var namespace string
 	if len(namespace) == 0 && !rm.Resource().IsNil() {
 		serviceName, svcNameOk := rm.Resource().Attributes().Get(conventions.AttributeServiceName)
 		serviceNamespace, svcNsOk := rm.Resource().Attributes().Get(conventions.AttributeServiceNamespace)
@@ -148,107 +140,103 @@ func TranslateOtToCWMetric(rm *pdata.ResourceMetrics, dimensionRollupOption stri
 	if len(namespace) == 0 {
 		namespace = defaultNameSpace
 	}
+	return namespace
+}
 
-	ilms := rm.InstrumentationLibraryMetrics()
-	for j := 0; j < ilms.Len(); j++ {
-		ilm := ilms.At(j)
-		if ilm.IsNil() {
-			continue
-		}
-		if ilm.InstrumentationLibrary().IsNil() {
-			instrumentationLibName = noInstrumentationLibraryName
-		} else {
-			instrumentationLibName = ilm.InstrumentationLibrary().Name()
-		}
+// TranslateOtToGroupedMetric converts OT metrics to GroupedMetric format
+func TranslateOtToGroupedMetric(metric pdata.Metrics, groupedMetricMap map[string]*GroupedMetric) {
+	totalDroppedMetrics := 0
 
-		metrics := ilm.Metrics()
-		for k := 0; k < metrics.Len(); k++ {
-			metric := metrics.At(k)
-			if metric.IsNil() {
-				totalDroppedMetrics++
+	var dps DataPoints
+	rms := metric.ResourceMetrics()
+	for i := 0; i < rms.Len(); i++ {
+		rm := rms.At(i)
+		namespace := GetNamespaceFromMetric(&rm)
+		ilms := rm.InstrumentationLibraryMetrics()
+		for j := 0; j < ilms.Len(); j++ {
+			ilm := ilms.At(j)
+			if ilm.IsNil() {
 				continue
 			}
-			cwMetrics := getCWMetrics(&metric, namespace, instrumentationLibName, dimensionRollupOption)
-			cwMetricList = append(cwMetricList, cwMetrics...)
-			batchCWMetrics(cwMetrics, groupedCWMetricMap, cwMetricsMap)
-		}
-	}
-	return cwMetricList, totalDroppedMetrics
-}
 
-// batchCWMetrics takes in list of CWMetrics and populates map of CWMetrics and GroupedCWMetrics
-func batchCWMetrics(cwMetricList []*CWMetrics, groupedCWMetricMap map[string]*GroupedCWMetric, cwMetricsMap map[string]*CWMetrics) {
-	for _, met := range cwMetricList {
-		if met == nil || met.Measurements == nil { 
-			fmt.Println("Invalid CW metric")
-			continue
-		} else if len(met.Measurements) > 1 || len(met.Measurements) == 0 {
-			fmt.Println("Invalid CW metric measurement size")
-			continue
-		} else {  // metric with non-empty dimension set
-			key := strings.Join(met.Measurements[0].Dimensions[0], "")
-			if _, ok := cwMetricsMap[key]; ok {
-				for _, v := range met.Measurements[0].Metrics {
-					groupedCWMetricMap[key].Metrics[v["Name"]] = met.Fields[v["Name"]]
-					groupedCWMetricMap[key].MetricUnits[v["Name"]] = v["Unit"]
-				}
-			} else {
-				cwMetricsMap[key] = met
-				metricMap := make(map[string]interface{})
-				dimensionMap := make(map[string]interface{})
-				metricUnits := make(map[string]string)
-
-				for _, v := range met.Measurements[0].Dimensions[0] {
-					dimensionMap[v] = met.Fields[v]
+			metrics := ilm.Metrics()
+			for k := 0; k < metrics.Len(); k++ {
+				metric := metrics.At(k)
+				if metric.IsNil() {
+					totalDroppedMetrics++
+					continue
 				}
 
-				for _, v := range met.Measurements[0].Metrics {
-					metricMap[v["Name"]] = met.Fields[v["Name"]]
-					metricUnits[v["Name"]] = v["Unit"]
+				switch metric.DataType() {
+					case pdata.MetricDataTypeIntGauge:
+						dps = IntDataPointSlice{metric.IntGauge().DataPoints()}
+					case pdata.MetricDataTypeDoubleGauge:
+						dps = DoubleDataPointSlice{metric.DoubleGauge().DataPoints()}
+					case pdata.MetricDataTypeIntSum:
+						dps = IntDataPointSlice{metric.IntSum().DataPoints()}
+					case pdata.MetricDataTypeDoubleSum:
+						dps = DoubleDataPointSlice{metric.DoubleSum().DataPoints()}
+					case pdata.MetricDataTypeDoubleHistogram:
+						dps = DoubleHistogramDataPointSlice{metric.DoubleHistogram().DataPoints()}
 				}
 
-				m := &GroupedCWMetric {
-					Namespace: met.Measurements[0].Namespace,
-					Metrics: metricMap,
-					Timestamp: met.Timestamp,
-					Dimensions: dimensionMap,
-					MetricUnits: metricUnits,
+				if dps.Len() == 0 {
+					return 
 				}
 
-				groupedCWMetricMap[key] = m
+				for m := 0; m < dps.Len(); m++ {
+					dp := dps.At(m)
+					if dp.IsNil() {
+						continue
+					}
+
+					labelSlice := make([]string, 0, dp.LabelsMap().Len())
+					dp.LabelsMap().ForEach(func(k string, v string) {
+						labelSlice = append(labelSlice, k)
+					})
+					sort.Strings(labelSlice)
+					key := strings.Join(labelSlice, "")
+
+					if _, ok := groupedMetricMap[key]; ok {
+						updateGroupedMetric(dp, &metric, key, groupedMetricMap)
+					} else {
+						groupedMetric := buildGroupedMetric(dp, &metric, namespace)
+						groupedMetricMap[key] = groupedMetric
+					}
+				}
 			}
 		}
 	}
 }
 
-func TranslateBatchedMetricToEMF(groupedCWMetricMap map[string]*GroupedCWMetric) []*LogEvent {
-	// convert map of GroupedCWMetric objects into map format for compatible with PLE input
+// convert map of GroupedMetric objects into map format for compatible with PLE input
+func TranslateBatchedMetricToEMF(groupedMetricMap map[string]*GroupedMetric) []*LogEvent {
 	ples := make([]*LogEvent, 0, maximumLogEventsPerPut)
-	for _, v := range groupedCWMetricMap {
+	for _, v := range groupedMetricMap {
 		fieldMap := make(map[string]interface{})
-		dimensionsList := make([][]string, 0)
+		labelsList := make([][]string, 0)
 		metricsList := make([]map[string]string, 0)
 		fieldMap["Namespace"] = v.Namespace
 
-		dList := make([]string, 0)
-		for key, val := range v.Dimensions {
-			dList = append(dList,key)
+		lList := make([]string, 0)
+		for key, val := range v.Labels {
+			lList = append(lList,key)
 			fieldMap[key] = val
 		}
 
-		dimensionsList = append(dimensionsList, dList)
+		labelsList = append(labelsList, lList)
 
-		for key, val := range v.MetricUnits {
+		for key, val := range v.Metrics {
 			metricDef := make(map[string]string)
 			metricDef["Name"] = key
-			metricDef["Unit"] = val
+			metricDef["Unit"] = val.Unit
 			metricsList = append(metricsList, metricDef)
-			fieldMap[key] = v.Metrics[key]
+			fieldMap[key] = val.Value
 		}
 
-		cwm := &CwMeasurement {
+		cwm := &CWMeasurement {
 			Namespace: v.Namespace,
-			Dimensions: dimensionsList,
+			Dimensions: labelsList,
 			Metrics: metricsList,
 		}
 
@@ -273,101 +261,30 @@ func TranslateBatchedMetricToEMF(groupedCWMetricMap map[string]*GroupedCWMetric)
 	return ples
 }
 
-func TranslateCWMetricToEMF(cwMetricList []*CWMetrics) []*LogEvent {
-	// convert CWMetric into map format for compatible with PLE input
-	ples := make([]*LogEvent, 0, maximumLogEventsPerPut)
-	for _, met := range cwMetricList {
-		cwmMap := make(map[string]interface{})
-		fieldMap := met.Fields
-		cwmMap["CloudWatchMetrics"] = met.Measurements
-		cwmMap["Timestamp"] = met.Timestamp
-		fieldMap["_aws"] = cwmMap
-
-		pleMsg, err := json.Marshal(fieldMap)
-		if err != nil {
-			continue
-		}
-		metricCreationTime := met.Timestamp
-
-		logEvent := NewLogEvent(
-			metricCreationTime,
-			string(pleMsg),
-		)
-		logEvent.LogGeneratedTime = time.Unix(0, metricCreationTime*int64(time.Millisecond))
-		ples = append(ples, logEvent)
-	}
-	return ples
-}
-
-// Translates OTLP Metric to list of CW Metrics
-func getCWMetrics(metric *pdata.Metric, namespace string, instrumentationLibName string, dimensionRollupOption string) []*CWMetrics {
-	var result []*CWMetrics
-	var dps DataPoints
-
-	// metric measure data from OT
-	metricMeasure := make(map[string]string)
-	metricMeasure["Name"] = metric.Name()
-	metricMeasure["Unit"] = metric.Unit()
-	// metric measure slice could include multiple metric measures
-	metricSlice := []map[string]string{metricMeasure}
-
-	// Retrieve data points
-	switch metric.DataType() {
-	case pdata.MetricDataTypeIntGauge:
-		dps = IntDataPointSlice{metric.IntGauge().DataPoints()}
-	case pdata.MetricDataTypeDoubleGauge:
-		dps = DoubleDataPointSlice{metric.DoubleGauge().DataPoints()}
-	case pdata.MetricDataTypeIntSum:
-		dps = IntDataPointSlice{metric.IntSum().DataPoints()}
-	case pdata.MetricDataTypeDoubleSum:
-		dps = DoubleDataPointSlice{metric.DoubleSum().DataPoints()}
-	case pdata.MetricDataTypeDoubleHistogram:
-		dps = DoubleHistogramDataPointSlice{metric.DoubleHistogram().DataPoints()}
-	}
-
-	if dps.Len() == 0 {
-		return result
-	}
-	for m := 0; m < dps.Len(); m++ {
-		dp := dps.At(m)
-		if dp.IsNil() {
-			continue
-		}
-		cwMetric := buildCWMetric(dp, metric, namespace, metricSlice, instrumentationLibName, dimensionRollupOption)
-		if cwMetric != nil {
-			result = append(result, cwMetric)
-		}
-	}
-	return result
-}
-
-// Build CWMetric from DataPoint
-func buildCWMetric(dp DataPoint, pmd *pdata.Metric, namespace string, metricSlice []map[string]string, instrumentationLibName string, dimensionRollupOption string) *CWMetrics {
-	dimensions, fields := createDimensions(dp, instrumentationLibName, dimensionRollupOption)
-	cwMeasurement := &CwMeasurement{
-		Namespace:  namespace,
-		Dimensions: dimensions,
-		Metrics:    metricSlice,
-	}
-	metricList := []CwMeasurement{*cwMeasurement}
+// Build grouped metric from Datapoint and pdata.Metric
+func buildGroupedMetric (dp DataPoint, pMetricData *pdata.Metric, namespace string) *GroupedMetric {
 	timestamp := time.Now().UnixNano() / int64(time.Millisecond)
-
+	labels := make(map[string]interface{})
+	metrics := make(map[string]MetricInfo)
+	// Extract labels
+	labelMap := dp.LabelsMap()
+	// v pdata.StringValue?
+	// v.Value()?
+	labelMap.ForEach(func(k string, v string) {
+		labels[k] = v
+	}) 
 	// Extract metric
 	var metricVal interface{}
 	switch metric := dp.(type) {
 	case pdata.IntDataPoint:
-		// Put a fake but identical metric value here in order to add metric name into fields
-		// since calculateRate() needs metric name as one of metric identifiers
-		fields[pmd.Name()] = int64(FakeMetricValue)
-		metricVal = metric.Value()
-		if needsCalculateRate(pmd) {
-			metricVal = calculateRate(fields, metric.Value(), timestamp)
+		metricVal = int64(metric.Value())
+		if needsCalculateRate(pMetricData) {
+			metricVal = calculateRate(labels, metric.Value(), timestamp)
 		}
 	case pdata.DoubleDataPoint:
-		fields[pmd.Name()] = float64(FakeMetricValue)
-		metricVal = metric.Value()
-		if needsCalculateRate(pmd) {
-			metricVal = calculateRate(fields, metric.Value(), timestamp)
+		metricVal = float64(metric.Value())
+		if needsCalculateRate(pMetricData) {
+			metricVal = calculateRate(labels, metric.Value(), timestamp)
 		}
 	case pdata.DoubleHistogramDataPoint:
 		bucketBounds := metric.ExplicitBounds()
@@ -381,14 +298,55 @@ func buildCWMetric(dp DataPoint, pmd *pdata.Metric, namespace string, metricSlic
 	if metricVal == nil {
 		return nil
 	}
-	fields[pmd.Name()] = metricVal
+	metricInfo := &MetricInfo {
+		Value: metricVal,
+		Unit:  pMetricData.Unit(),
+	} 
 
-	cwMetric := &CWMetrics{
-		Measurements: metricList,
-		Timestamp:    timestamp,
-		Fields:       fields,
+	metrics[pMetricData.Name()] = *metricInfo
+
+	groupedMetric := &GroupedMetric {
+		Namespace: namespace,
+		Timestamp: timestamp,
+		Labels:    labels,
+		Metrics:   metrics,
 	}
-	return cwMetric
+	return groupedMetric
+}
+
+// Update GroupedMetric with new metric from datapoint
+func updateGroupedMetric (dp DataPoint, pMetricData *pdata.Metric, key string, groupedMetricMap map[string]*GroupedMetric) {
+	timestamp := time.Now().UnixNano() / int64(time.Millisecond)
+
+	// Extract metric
+	var metricVal interface{}
+	switch metric := dp.(type) {
+	case pdata.IntDataPoint:
+		metricVal = int64(metric.Value())
+
+	case pdata.DoubleDataPoint:
+		metricVal = float64(metric.Value())
+
+	case pdata.DoubleHistogramDataPoint:
+		bucketBounds := metric.ExplicitBounds()
+		metricVal = &CWMetricStats{
+			Min:   bucketBounds[0],
+			Max:   bucketBounds[len(bucketBounds)-1],
+			Count: metric.Count(),
+			Sum:   metric.Sum(),
+		}
+	}
+
+	if metricVal == nil {
+		return
+	}
+	metricInfo := &MetricInfo {
+		Value: metricVal,
+		Unit:  pMetricData.Unit(),
+	} 
+
+	groupedMetricMap[key].Metrics[pMetricData.Name()] = *metricInfo
+	groupedMetricMap[key].Timestamp = timestamp
 }
 
 // Create dimensions from DataPoint labels, where dimensions is a 2D array of dimension names,
@@ -400,8 +358,8 @@ func createDimensions(dp DataPoint, instrumentationLibName string, dimensionRoll
 
 	dimensionSlice := make([]string, dimensionKV.Len(), dimensionKV.Len()+1)
 	idx := 0
-	dimensionKV.ForEach(func(k string, v pdata.StringValue) {
-		fields[k] = v.Value()
+	dimensionKV.ForEach(func(k string, v string) {
+		fields[k] = v
 		dimensionSlice[idx] = k
 		idx++
 	})
