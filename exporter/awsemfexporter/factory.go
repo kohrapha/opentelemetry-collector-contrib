@@ -16,6 +16,7 @@ package awsemfexporter
 
 import (
 	"context"
+	"fmt"
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/config/configmodels"
 	"go.opentelemetry.io/collector/exporter/exporterhelper"
@@ -52,6 +53,7 @@ func createDefaultConfig() configmodels.Exporter {
 		Region:                "",
 		RoleARN:               "",
 		DimensionRollupOption: "ZeroAndSingleDimensionRollup",
+		logger:                nil,
 	}
 }
 
@@ -59,6 +61,7 @@ func createDefaultConfig() configmodels.Exporter {
 func createMetricsExporter(_ context.Context,
 	params component.ExporterCreateParams,
 	config configmodels.Exporter) (component.MetricsExporter, error) {
+	fmt.Println("HELLO WORLD")
 	expCfg := config.(*Config)
 
 	return New(expCfg, params)

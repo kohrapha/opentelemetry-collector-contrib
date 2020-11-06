@@ -19,7 +19,6 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
-	"strings"
 
 	"github.com/DataDog/datadog-agent/pkg/trace/exportable/pb"
 	"go.opencensus.io/trace"
@@ -31,6 +30,7 @@ import (
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/datadogexporter/config"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/datadogexporter/metadata"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/datadogexporter/utils"
 )
 
 // codeDetails specifies information about a trace status code.
@@ -69,12 +69,7 @@ var statusCodes = map[int32]codeDetails{
 }
 
 // converts Traces into an array of datadog trace payloads grouped by env
-func ConvertToDatadogTd(td pdata.Traces, cfg *config.Config, globalTags []string) ([]*pb.TracePayload, error) {
-	// get hostname tag
-	// this is getting abstracted out to config
-	// TODO pass logger here once traces code stabilizes
-	hostname := *metadata.GetHost(zap.NewNop(), cfg)
-
+func ConvertToDatadogTd(td pdata.Traces, cfg *config.Config) ([]*pb.TracePayload, error) {
 	// TODO:
 	// do we apply other global tags, like version+service, to every span or only root spans of a service
 	// should globalTags['service'] take precedence over a trace's resource.service.name? I don't believe so, need to confirm
@@ -89,8 +84,16 @@ func ConvertToDatadogTd(td pdata.Traces, cfg *config.Config, globalTags []string
 			continue
 		}
 
-		// TODO: Also pass in globalTags here when we know what to do with them
-		payload, err := resourceSpansToDatadogSpans(rs, hostname, cfg, globalTags)
+		// TODO pass logger here once traces code stabilizes
+		hostname := *metadata.GetHost(zap.NewNop(), cfg)
+		if !rs.Resource().IsNil() {
+			resHostname, ok := metadata.HostnameFromAttributes(rs.Resource().Attributes())
+			if ok {
+				hostname = resHostname
+			}
+		}
+
+		payload, err := resourceSpansToDatadogSpans(rs, hostname, cfg)
 		if err != nil {
 			return traces, err
 		}
@@ -129,7 +132,7 @@ func AggregateTracePayloadsByEnv(tracePayloads []*pb.TracePayload) []*pb.TracePa
 }
 
 // converts a Trace's resource spans into a trace payload
-func resourceSpansToDatadogSpans(rs pdata.ResourceSpans, hostname string, cfg *config.Config, globalTags []string) (pb.TracePayload, error) {
+func resourceSpansToDatadogSpans(rs pdata.ResourceSpans, hostname string, cfg *config.Config) (pb.TracePayload, error) {
 	// get env tag
 	env := cfg.Env
 
@@ -165,7 +168,7 @@ func resourceSpansToDatadogSpans(rs pdata.ResourceSpans, hostname string, cfg *c
 		extractInstrumentationLibraryTags(ils.InstrumentationLibrary(), datadogTags)
 		spans := ils.Spans()
 		for j := 0; j < spans.Len(); j++ {
-			span, err := spanToDatadogSpan(spans.At(j), resourceServiceName, datadogTags, cfg, globalTags)
+			span, err := spanToDatadogSpan(spans.At(j), resourceServiceName, datadogTags, cfg)
 
 			if err != nil {
 				return payload, err
@@ -212,21 +215,27 @@ func spanToDatadogSpan(s pdata.Span,
 	serviceName string,
 	datadogTags map[string]string,
 	cfg *config.Config,
-	globalTags []string,
 ) (*pb.Span, error) {
+
+	tags := aggregateSpanTags(s, datadogTags)
+
 	// otel specification resource service.name takes precedence
 	// and configuration DD_ENV as fallback if it exists
 	if serviceName == "" && cfg.Service != "" {
 		serviceName = cfg.Service
 	}
 
-	version := cfg.Version
-	tags := aggregateSpanTags(s, datadogTags)
+	//  canonical resource attribute version should override others if it exists
+	if rsTagVersion := tags[conventions.AttributeServiceVersion]; rsTagVersion != "" {
+		tags[versionTag] = rsTagVersion
+	} else {
+		version := cfg.Version
 
-	// if no version tag exists, set it if provided via config
-	if version != "" {
-		if tagVersion := tags[versionTag]; tagVersion == "" {
-			tags[versionTag] = version
+		// if no version tag exists, set it if provided via config
+		if version != "" {
+			if tagVersion := tags[versionTag]; tagVersion == "" {
+				tags[versionTag] = version
+			}
 		}
 	}
 
@@ -248,8 +257,8 @@ func spanToDatadogSpan(s pdata.Span,
 	datadogType := spanKindToDatadogType(s.Kind())
 
 	span := &pb.Span{
-		TraceID:  decodeAPMId(s.TraceID().Bytes()[:]),
-		SpanID:   decodeAPMId(s.SpanID().Bytes()[:]),
+		TraceID:  decodeAPMTraceID(s.TraceID().Bytes()),
+		SpanID:   decodeAPMSpanID(s.SpanID().Bytes()),
 		Name:     getDatadogSpanName(s, tags),
 		Resource: getDatadogResourceName(s, tags),
 		Service:  serviceName,
@@ -260,8 +269,8 @@ func spanToDatadogSpan(s pdata.Span,
 		Type:     datadogType,
 	}
 
-	if len(s.ParentSpanID().Bytes()) > 0 {
-		span.ParentID = decodeAPMId(s.ParentSpanID().Bytes()[:])
+	if s.ParentSpanID().IsValid() {
+		span.ParentID = decodeAPMSpanID(s.ParentSpanID().Bytes())
 	}
 
 	// Set Span Status and any response or error details
@@ -297,16 +306,6 @@ func spanToDatadogSpan(s pdata.Span,
 	// Set Attributes as Tags
 	for key, val := range tags {
 		setStringTag(span, key, val)
-	}
-
-	for _, val := range globalTags {
-		parts := strings.Split(val, ":")
-		// only apply global tag if its not service/env/version/host and it is not malformed
-		if len(parts) < 2 || strings.TrimSpace(parts[1]) == "" || isCanonicalSpanTag(strings.TrimSpace(parts[0])) {
-			continue
-		}
-
-		setStringTag(span, strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1]))
 	}
 
 	return span, nil
@@ -428,8 +427,15 @@ func addToAPITrace(apiTrace *pb.APITrace, sp *pb.Span) {
 	}
 }
 
-func decodeAPMId(apmID []byte) uint64 {
-	id := hex.EncodeToString(apmID)
+func decodeAPMSpanID(rawID [8]byte) uint64 {
+	return decodeAPMId(hex.EncodeToString(rawID[:]))
+}
+
+func decodeAPMTraceID(rawID [16]byte) uint64 {
+	return decodeAPMId(hex.EncodeToString(rawID[:]))
+}
+
+func decodeAPMId(id string) uint64 {
 	if len(id) > 16 {
 		id = id[len(id)-16:]
 	}
@@ -448,18 +454,18 @@ func getDatadogSpanName(s pdata.Span, datadogTags map[string]string) string {
 	// The spec has changed over time and, depending on the original exporter, IL Name could represented a few different ways
 	// so we try to account for all permutations
 	if ilnOtlp, okOtlp := datadogTags[tracetranslator.TagInstrumentationName]; okOtlp {
-		return strings.ReplaceAll(fmt.Sprintf("%s.%s", ilnOtlp, s.Kind()), "::", "_")
+		return utils.NormalizeSpanName(fmt.Sprintf("%s.%s", ilnOtlp, s.Kind()))
 	}
 
 	if ilnOtelCur, okOtelCur := datadogTags[currentILNameTag]; okOtelCur {
-		return strings.ReplaceAll(fmt.Sprintf("%s.%s", ilnOtelCur, s.Kind()), "::", "_")
+		return utils.NormalizeSpanName(fmt.Sprintf("%s.%s", ilnOtelCur, s.Kind()))
 	}
 
 	if ilnOtelOld, okOtelOld := datadogTags[oldILNameTag]; okOtelOld {
-		return strings.ReplaceAll(fmt.Sprintf("%s.%s", ilnOtelOld, s.Kind()), "::", "_")
+		return utils.NormalizeSpanName(fmt.Sprintf("%s.%s", ilnOtelOld, s.Kind()))
 	}
 
-	return strings.ReplaceAll(fmt.Sprintf("%s.%s", "opentelemetry", s.Kind()), "::", "_")
+	return utils.NormalizeSpanName(fmt.Sprintf("%s.%s", "opentelemetry", s.Kind()))
 }
 
 func getDatadogResourceName(s pdata.Span, datadogTags map[string]string) string {
@@ -476,17 +482,4 @@ func getDatadogResourceName(s pdata.Span, datadogTags map[string]string) string 
 	}
 
 	return s.Name()
-}
-
-// we want to handle these tags separately
-func isCanonicalSpanTag(category string) bool {
-	switch category {
-	case
-		"env",
-		"host",
-		"service",
-		"version":
-		return true
-	}
-	return false
 }

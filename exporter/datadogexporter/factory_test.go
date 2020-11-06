@@ -48,6 +48,7 @@ func TestCreateDefaultConfig(t *testing.T) {
 		Traces: config.TracesConfig{
 			SampleRate: 1,
 		},
+		SendMetadata: true,
 	}, cfg, "failed to create default config")
 
 	assert.NoError(t, configcheck.ValidateConfig(cfg))
@@ -89,7 +90,6 @@ func TestLoadConfig(t *testing.T) {
 		},
 
 		Metrics: config.MetricsConfig{
-			Namespace: "opentelemetry.",
 			TCPAddr: confignet.TCPAddr{
 				Endpoint: "https://api.datadoghq.eu",
 			},
@@ -101,6 +101,7 @@ func TestLoadConfig(t *testing.T) {
 				Endpoint: "https://trace.agent.datadoghq.eu",
 			},
 		},
+		SendMetadata: true,
 	}, apiConfig)
 
 	invalidConfig2 := cfg.Exporters["datadog/invalid"].(*config.Config)
@@ -128,6 +129,7 @@ func TestCreateAPIMetricsExporter(t *testing.T) {
 	// Use the mock server for API key validation
 	c := (cfg.Exporters["datadog/api"]).(*config.Config)
 	c.Metrics.TCPAddr.Endpoint = server.URL
+	c.SendMetadata = false
 	cfg.Exporters["datadog/api"] = c
 
 	ctx := context.Background()
@@ -142,6 +144,9 @@ func TestCreateAPIMetricsExporter(t *testing.T) {
 }
 
 func TestCreateAPITracesExporter(t *testing.T) {
+	server := testutils.DatadogServerMock()
+	defer server.Close()
+
 	logger := zap.NewNop()
 
 	factories, err := componenttest.ExampleComponents()
@@ -154,8 +159,13 @@ func TestCreateAPITracesExporter(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, cfg)
 
+	// Use the mock server for API key validation
+	c := (cfg.Exporters["datadog/api"]).(*config.Config)
+	c.Metrics.TCPAddr.Endpoint = server.URL
+	c.SendMetadata = false
+
 	ctx := context.Background()
-	exp, err := factory.CreateTraceExporter(
+	exp, err := factory.CreateTracesExporter(
 		ctx,
 		component.ExporterCreateParams{Logger: logger},
 		cfg.Exporters["datadog/api"],

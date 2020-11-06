@@ -53,8 +53,11 @@ func New(
 	}
 
 	logger := params.Logger
+	expConfig := config.(*Config)
+	expConfig.logger = logger
+
 	// create AWS session
-	awsConfig, session, err := GetAWSConfigSession(logger, &Conn{}, config.(*Config))
+	awsConfig, session, err := GetAWSConfigSession(logger, &Conn{}, expConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -77,11 +80,10 @@ func New(
 
 func (emf *emfExporter) pushMetricsData(_ context.Context, md pdata.Metrics) (droppedTimeSeries int, err error) {
 	expConfig := emf.config.(*Config)
-	dimensionRollupOption := expConfig.DimensionRollupOption
 	logGroup := "/metrics/default"
 	logStream := fmt.Sprintf("otel-stream-%s", emf.collectorID)
 	// override log group if customer has specified Resource Attributes service.name or service.namespace
-	putLogEvents, totalDroppedMetrics, namespace := generateLogEventFromMetric(md, dimensionRollupOption, expConfig.Namespace)
+	putLogEvents, totalDroppedMetrics, namespace := generateLogEventFromMetric(md, expConfig)
 	if namespace != "" {
 		logGroup = fmt.Sprintf("/metrics/%s", namespace)
 	}

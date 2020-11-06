@@ -31,6 +31,9 @@ import (
 	"go.opentelemetry.io/collector/consumer/pdata"
 	"go.opentelemetry.io/collector/translator/conventions"
 	"go.opentelemetry.io/collector/translator/internaldata"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+	"go.uber.org/zap/zaptest/observer"
 )
 
 // Asserts whether dimension sets are equal (i.e. has same sets of dimensions)
@@ -53,7 +56,10 @@ func assertDimsEqual(t *testing.T, expected, actual [][]string) {
 }
 
 func TestTranslateOtToCWMetricWithInstrLibrary(t *testing.T) {
-
+	config := &Config{
+		Namespace:             "",
+		DimensionRollupOption: ZeroAndSingleDimensionRollup,
+	}
 	md := createMetricTestData()
 	rm := internaldata.OCToMetrics(md).ResourceMetrics().At(0)
 	ilms := rm.InstrumentationLibraryMetrics()
@@ -93,7 +99,10 @@ func TestTranslateOtToCWMetricWithInstrLibrary(t *testing.T) {
 }
 
 func TestTranslateOtToCWMetricWithoutInstrLibrary(t *testing.T) {
-
+	config := &Config{
+		Namespace:             "",
+		DimensionRollupOption: ZeroAndSingleDimensionRollup,
+	}
 	md := createMetricTestData()
 	rm := internaldata.OCToMetrics(md).ResourceMetrics().At(0)
 	cwMetricsMap := make(map[string]*CWMetrics)
@@ -131,6 +140,10 @@ func TestTranslateOtToCWMetricWithoutInstrLibrary(t *testing.T) {
 }
 
 func TestTranslateOtToCWMetricWithNameSpace(t *testing.T) {
+	config := &Config{
+		Namespace:             "",
+		DimensionRollupOption: ZeroAndSingleDimensionRollup,
+	}
 	md := consumerdata.MetricsData{
 		Node: &commonpb.Node{
 			LibraryInfo: &commonpb.LibraryInfo{ExporterVersion: "SomeVersion"},
@@ -275,6 +288,9 @@ func TestGetCWMetrics(t *testing.T) {
 	namespace := "Namespace"
 	OTelLib := "OTelLib"
 	instrumentationLibName := "InstrLibName"
+	config := &Config{
+		DimensionRollupOption: "",
+	}
 
 	testCases := []struct {
 		testName string
@@ -762,7 +778,7 @@ func TestGetCWMetrics(t *testing.T) {
 			assert.Equal(t, 1, metrics.Len())
 			metric := metrics.At(0)
 
-			cwMetrics := getCWMetrics(&metric, namespace, instrumentationLibName, "")
+			cwMetrics := getCWMetrics(&metric, namespace, instrumentationLibName, config)
 			assert.Equal(t, len(tc.expected), len(cwMetrics))
 
 			for i, expected := range tc.expected {
@@ -774,6 +790,42 @@ func TestGetCWMetrics(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("Unhandled metric type", func(t *testing.T) {
+		metric := pdata.NewMetric()
+		metric.InitEmpty()
+		metric.SetName("foo")
+		metric.SetUnit("Count")
+		metric.SetDataType(pdata.MetricDataTypeIntHistogram)
+
+		obs, logs := observer.New(zap.WarnLevel)
+		obsConfig := &Config{
+			DimensionRollupOption: "",
+			logger:                zap.New(obs),
+		}
+
+		cwMetrics := getCWMetrics(&metric, namespace, instrumentationLibName, obsConfig)
+		assert.Nil(t, cwMetrics)
+
+		// Test output warning logs
+		expectedLogs := []observer.LoggedEntry{
+			{
+				Entry: zapcore.Entry{Level: zap.WarnLevel, Message: "Unhandled metric data type."},
+				Context: []zapcore.Field{
+					zap.String("DataType", "IntHistogram"),
+					zap.String("Name", "foo"),
+					zap.String("Unit", "Count"),
+				},
+			},
+		}
+		assert.Equal(t, 1, logs.Len())
+		assert.Equal(t, expectedLogs, logs.AllUntimed())
+	})
+
+	t.Run("Nil metric", func(t *testing.T) {
+		cwMetrics := getCWMetrics(nil, namespace, instrumentationLibName, config)
+		assert.Nil(t, cwMetrics)
+	})
 }
 
 func TestBuildCWMetric(t *testing.T) {
@@ -936,6 +988,7 @@ func TestBuildCWMetric(t *testing.T) {
 		}
 		assert.Equal(t, expectedFields, cwMetric.Fields)
 	})
+
 	t.Run("Invalid datapoint type", func(t *testing.T) {
 		metric.SetDataType(pdata.MetricDataTypeIntGauge)
 		dp := pdata.NewIntHistogramDataPoint()
@@ -1023,6 +1076,112 @@ func TestCalculateRate(t *testing.T) {
 	assert.Equal(t, 0, rate)
 	rate = calculateRate(fields, curDoubleValue, curTime)
 	assert.Equal(t, 0.5, rate)
+}
+
+func TestDimensionRollup(t *testing.T) {
+	testCases := []struct {
+		testName               string
+		dimensionRollupOption  string
+		dims                   []string
+		instrumentationLibName string
+		expected               [][]string
+	}{
+		{
+			"no rollup w/o instrumentation library name",
+			"",
+			[]string{"a", "b", "c"},
+			noInstrumentationLibraryName,
+			nil,
+		},
+		{
+			"no rollup w/ instrumentation library name",
+			"",
+			[]string{"a", "b", "c"},
+			"cloudwatch-otel",
+			nil,
+		},
+		{
+			"single dim w/o instrumentation library name",
+			SingleDimensionRollupOnly,
+			[]string{"a", "b", "c"},
+			noInstrumentationLibraryName,
+			[][]string{
+				{"a"},
+				{"b"},
+				{"c"},
+			},
+		},
+		{
+			"single dim w/ instrumentation library name",
+			SingleDimensionRollupOnly,
+			[]string{"a", "b", "c"},
+			"cloudwatch-otel",
+			[][]string{
+				{OTellibDimensionKey, "a"},
+				{OTellibDimensionKey, "b"},
+				{OTellibDimensionKey, "c"},
+			},
+		},
+		{
+			"single dim w/o instrumentation library name and only one label",
+			SingleDimensionRollupOnly,
+			[]string{"a"},
+			noInstrumentationLibraryName,
+			nil,
+		},
+		{
+			"single dim w/ instrumentation library name and only one label",
+			SingleDimensionRollupOnly,
+			[]string{"a"},
+			"cloudwatch-otel",
+			nil,
+		},
+		{
+			"zero + single dim w/o instrumentation library name",
+			ZeroAndSingleDimensionRollup,
+			[]string{"a", "b", "c"},
+			noInstrumentationLibraryName,
+			[][]string{
+				{},
+				{"a"},
+				{"b"},
+				{"c"},
+			},
+		},
+		{
+			"zero + single dim w/ instrumentation library name",
+			ZeroAndSingleDimensionRollup,
+			[]string{"a", "b", "c"},
+			"cloudwatch-otel",
+			[][]string{
+				{OTellibDimensionKey},
+				{OTellibDimensionKey, "a"},
+				{OTellibDimensionKey, "b"},
+				{OTellibDimensionKey, "c"},
+			},
+		},
+		{
+			"zero dim rollup w/o instrumentation library name and no labels",
+			ZeroAndSingleDimensionRollup,
+			[]string{},
+			noInstrumentationLibraryName,
+			nil,
+		},
+		{
+			"zero dim rollup w/ instrumentation library name and no labels",
+			ZeroAndSingleDimensionRollup,
+			[]string{},
+			"cloudwatch-otel",
+			nil,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.testName, func(t *testing.T) {
+			rolledUp := dimensionRollup(tc.dimensionRollupOption, tc.dims, tc.instrumentationLibName)
+			assert.Equal(t, tc.expected, rolledUp)
+		})
+	}
 }
 
 func readFromFile(filename string) string {

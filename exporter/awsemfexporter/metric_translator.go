@@ -25,6 +25,7 @@ import (
 
 	"go.opentelemetry.io/collector/consumer/pdata"
 	"go.opentelemetry.io/collector/translator/conventions"
+	"go.uber.org/zap"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/awsemfexporter/mapwithexpiry"
 )
@@ -181,7 +182,7 @@ func TranslateOtToGroupedMetric(metric pdata.Metrics, groupedMetricMap map[strin
 				}
 
 				if dps.Len() == 0 {
-					return 
+					return
 				}
 
 				for m := 0; m < dps.Len(); m++ {
@@ -240,10 +241,10 @@ func TranslateBatchedMetricToEMF(groupedMetricMap map[string]*GroupedMetric) []*
 			Metrics: metricsList,
 		}
 
-		cwmMap := make(map[string]interface{})
-		cwmMap["CloudWatchMetrics"] = cwm
-		cwmMap["Timestamp"] = v.Timestamp
-		fieldMap["_aws"] = cwmMap
+		fieldMap["Namespace"] = v.Namespace
+		fieldMap["Timestamp"] = v.Timestamp
+		fieldMap["Dimensions"] = dMap
+		fieldMap["Metrics"] = mMap
 
 		pleMsg, err := json.Marshal(fieldMap)
 		if err != nil {
@@ -272,7 +273,7 @@ func buildGroupedMetric (dp DataPoint, pMetricData *pdata.Metric, namespace stri
 	// v.Value()?
 	labelMap.ForEach(func(k string, v string) {
 		labels[k] = v
-	}) 
+	})
 	// Extract metric
 	var metricVal interface{}
 	switch metric := dp.(type) {
@@ -301,7 +302,7 @@ func buildGroupedMetric (dp DataPoint, pMetricData *pdata.Metric, namespace stri
 	metricInfo := &MetricInfo {
 		Value: metricVal,
 		Unit:  pMetricData.Unit(),
-	} 
+	}
 
 	metrics[pMetricData.Name()] = *metricInfo
 
@@ -343,7 +344,7 @@ func updateGroupedMetric (dp DataPoint, pMetricData *pdata.Metric, key string, g
 	metricInfo := &MetricInfo {
 		Value: metricVal,
 		Unit:  pMetricData.Unit(),
-	} 
+	}
 
 	groupedMetricMap[key].Metrics[pMetricData.Name()] = *metricInfo
 	groupedMetricMap[key].Timestamp = timestamp

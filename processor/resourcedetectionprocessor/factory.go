@@ -28,8 +28,10 @@ import (
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourcedetectionprocessor/internal"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourcedetectionprocessor/internal/aws/ec2"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourcedetectionprocessor/internal/aws/ecs"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourcedetectionprocessor/internal/env"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourcedetectionprocessor/internal/gcp/gce"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/resourcedetectionprocessor/internal/system"
 )
 
 const (
@@ -51,9 +53,11 @@ type factory struct {
 // NewFactory creates a new factory for ResourceDetection processor.
 func NewFactory() component.ProcessorFactory {
 	resourceProviderFactory := internal.NewProviderFactory(map[internal.DetectorType]internal.DetectorFactory{
-		env.TypeStr: env.NewDetector,
-		gce.TypeStr: gce.NewDetector,
-		ec2.TypeStr: ec2.NewDetector,
+		env.TypeStr:    env.NewDetector,
+		system.TypeStr: system.NewDetector,
+		gce.TypeStr:    gce.NewDetector,
+		ec2.TypeStr:    ec2.NewDetector,
+		ecs.TypeStr:    ecs.NewDetector,
 	})
 
 	f := &factory{
@@ -91,7 +95,7 @@ func (f *factory) createTraceProcessor(
 	params component.ProcessorCreateParams,
 	cfg configmodels.Processor,
 	nextConsumer consumer.TracesConsumer,
-) (component.TraceProcessor, error) {
+) (component.TracesProcessor, error) {
 	rdp, err := f.getResourceDetectionProcessor(params.Logger, cfg)
 	if err != nil {
 		return nil, err
