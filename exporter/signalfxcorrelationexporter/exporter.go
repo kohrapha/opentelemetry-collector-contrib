@@ -25,13 +25,11 @@ import (
 
 // corrExporter is a wrapper struct of the correlation exporter
 type corrExporter struct {
-	logger  *zap.Logger
-	config  *Config
-	tracker *Tracker
+	logger *zap.Logger
+	config *Config
 }
 
 func (se *corrExporter) Shutdown(context.Context) error {
-	se.tracker.Shutdown()
 	return nil
 }
 
@@ -42,13 +40,12 @@ func newCorrExporter(cfg *Config, params component.ExporterCreateParams) (corrEx
 	}
 
 	return corrExporter{
-		logger:  params.Logger,
-		config:  cfg,
-		tracker: NewTracker(cfg, params),
+		logger: params.Logger,
+		config: cfg,
 	}, err
 }
 
-func newTraceExporter(cfg *Config, params component.ExporterCreateParams) (component.TracesExporter, error) {
+func newTraceExporter(cfg *Config, params component.ExporterCreateParams) (component.TraceExporter, error) {
 	se, err := newCorrExporter(cfg, params)
 	if err != nil {
 		return nil, err
@@ -56,14 +53,11 @@ func newTraceExporter(cfg *Config, params component.ExporterCreateParams) (compo
 
 	return exporterhelper.NewTraceExporter(
 		cfg,
-		params.Logger,
 		se.pushTraceData,
 		exporterhelper.WithShutdown(se.Shutdown))
 }
 
 // pushTraceData processes traces to extract services and environments to associate them to their emitting host/pods.
 func (se *corrExporter) pushTraceData(ctx context.Context, td pdata.Traces) (droppedSpansCount int, err error) {
-	// NOTE: Correlation does not currently support inline access token.
-	se.tracker.AddSpans(ctx, td)
 	return 0, nil
 }

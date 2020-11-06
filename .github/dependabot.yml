@@ -33,10 +33,6 @@ updates:
     directory: "/internal/k8sconfig"
     schedule:
       interval: "weekly"
-  - package-ecosystem: "gomod"
-    directory: "/internal/splunk"
-    schedule:
-      interval: "weekly"
 
   ##################
   #   EXTENSIONS   #
@@ -126,10 +122,6 @@ updates:
     schedule:
       interval: "weekly"
   - package-ecosystem: "gomod"
-    directory: "/exporter/signalfxcorrelationexporter"
-    schedule:
-      interval: "weekly"
-  - package-ecosystem: "gomod"
     directory: "/exporter/splunkhecexporter"
     schedule:
       interval: "weekly"
@@ -159,10 +151,6 @@ updates:
       interval: "weekly"
   - package-ecosystem: "gomod"
     directory: "/processor/routingprocessor"
-    schedule:
-      interval: "weekly"
-  - package-ecosystem: "gomod"
-    directory: "/processor/tailsamplingprocessor"
     schedule:
       interval: "weekly"
 

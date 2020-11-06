@@ -22,23 +22,25 @@ import (
 	"go.opentelemetry.io/collector/config/confignet"
 )
 
-func TestHostTags(t *testing.T) {
+func TestTags(t *testing.T) {
 	tc := TagsConfig{
 		Hostname: "customhost",
 		Env:      "customenv",
-		// Service and version should be only used for traces
-		Service: "customservice",
-		Version: "customversion",
-		Tags:    []string{"key1:val1", "key2:val2"},
+		Service:  "customservice",
+		Version:  "customversion",
+		Tags:     []string{"key1:val1", "key2:val2"},
 	}
 
 	assert.ElementsMatch(t,
 		[]string{
+			"host:customhost",
 			"env:customenv",
+			"service:customservice",
+			"version:customversion",
 			"key1:val1",
 			"key2:val2",
 		},
-		tc.GetHostTags(),
+		tc.GetTags(true), // get host
 	)
 }
 

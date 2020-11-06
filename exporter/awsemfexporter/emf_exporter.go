@@ -53,11 +53,8 @@ func New(
 	}
 
 	logger := params.Logger
-	expConfig := config.(*Config)
-	expConfig.logger = logger
-
 	// create AWS session
-	awsConfig, session, err := GetAWSConfigSession(logger, &Conn{}, expConfig)
+	awsConfig, session, err := GetAWSConfigSession(logger, &Conn{}, config.(*Config))
 	if err != nil {
 		return nil, err
 	}
@@ -80,10 +77,11 @@ func New(
 
 func (emf *emfExporter) pushMetricsData(_ context.Context, md pdata.Metrics) (droppedTimeSeries int, err error) {
 	expConfig := emf.config.(*Config)
+	dimensionRollupOption := expConfig.DimensionRollupOption
 	logGroup := "/metrics/default"
 	logStream := fmt.Sprintf("otel-stream-%s", emf.collectorID)
 	// override log group if customer has specified Resource Attributes service.name or service.namespace
-	putLogEvents, totalDroppedMetrics, namespace := generateLogEventFromMetric(md, expConfig)
+	putLogEvents, totalDroppedMetrics, namespace := generateLogEventFromMetric(md, dimensionRollupOption, expConfig.Namespace)
 	if namespace != "" {
 		logGroup = fmt.Sprintf("/metrics/%s", namespace)
 	}
@@ -171,14 +169,13 @@ func (emf *emfExporter) Start(ctx context.Context, host component.Host) error {
 	return nil
 }
 
-func generateLogEventFromMetric(metric pdata.Metrics, config *Config) ([]*LogEvent, int, string) {
-	namespace := config.Namespace
+func generateLogEventFromMetric(metric pdata.Metrics, dimensionRollupOption string, namespace string) ([]*LogEvent, int, string) {
 	rms := metric.ResourceMetrics()
 	cwMetricLists := []*CWMetrics{}
 	var cwm []*CWMetrics
 	var totalDroppedMetrics int
 	cwMetricsMap := make(map[string]*CWMetrics)
-	groupedCWMetricMap := make(map[string]*GroupedCWMetric)
+	groupedCWMetricMap := make(map[string]*GroupedCWMetric) 
 
 	for i := 0; i < rms.Len(); i++ {
 		rm := rms.At(i)

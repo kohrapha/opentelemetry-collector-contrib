@@ -37,9 +37,12 @@ type logzioExporter struct {
 	accountToken                 string
 	writer                       *store.LogzioSpanWriter
 	logger                       hclog.Logger
-	WriteSpanFunc                func(ctx context.Context, span *model.Span) error
+	WriteSpanFunc                func(span *model.Span) error
 	InternalTracesToJaegerTraces func(td pdata.Traces) ([]*model.Batch, error)
 }
+
+//var WriteSpanFunc func(span *model.Span) error
+//var InternalTracesToJaegerTraces = jaeger.InternalTracesToJaegerProto
 
 func newLogzioExporter(config *Config, params component.ExporterCreateParams) (*logzioExporter, error) {
 	logger := Hclog2ZapLogger{
@@ -70,7 +73,7 @@ func newLogzioExporter(config *Config, params component.ExporterCreateParams) (*
 	}, nil
 }
 
-func newLogzioTraceExporter(config *Config, params component.ExporterCreateParams) (component.TracesExporter, error) {
+func newLogzioTraceExporter(config *Config, params component.ExporterCreateParams) (component.TraceExporter, error) {
 	exporter, err := newLogzioExporter(config, params)
 	if err != nil {
 		return nil, err
@@ -81,7 +84,6 @@ func newLogzioTraceExporter(config *Config, params component.ExporterCreateParam
 
 	return exporterhelper.NewTraceExporter(
 		config,
-		params.Logger,
 		exporter.pushTraceData,
 		exporterhelper.WithShutdown(exporter.Shutdown))
 }
@@ -95,7 +97,7 @@ func (exporter *logzioExporter) pushTraceData(ctx context.Context, traces pdata.
 	for _, batch := range batches {
 		for _, span := range batch.Spans {
 			span.Process = batch.Process
-			if err := exporter.WriteSpanFunc(ctx, span); err != nil {
+			if err := exporter.WriteSpanFunc(span); err != nil {
 				exporter.logger.Debug(fmt.Sprintf("dropped bad span: %s", span.String()))
 				droppedSpans++
 			}

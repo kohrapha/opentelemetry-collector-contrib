@@ -31,9 +31,6 @@ import (
 	"go.opentelemetry.io/collector/consumer/pdata"
 	"go.opentelemetry.io/collector/translator/conventions"
 	"go.opentelemetry.io/collector/translator/internaldata"
-	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
-	"go.uber.org/zap/zaptest/observer"
 )
 
 // Asserts whether dimension sets are equal (i.e. has same sets of dimensions)
@@ -56,17 +53,14 @@ func assertDimsEqual(t *testing.T, expected, actual [][]string) {
 }
 
 func TestTranslateOtToCWMetricWithInstrLibrary(t *testing.T) {
-	config := &Config{
-		Namespace:             "",
-		DimensionRollupOption: ZeroAndSingleDimensionRollup,
-	}
+
 	md := createMetricTestData()
 	rm := internaldata.OCToMetrics(md).ResourceMetrics().At(0)
 	ilms := rm.InstrumentationLibraryMetrics()
 	ilm := ilms.At(0)
 	ilm.InstrumentationLibrary().InitEmpty()
 	ilm.InstrumentationLibrary().SetName("cloudwatch-lib")
-	cwm, totalDroppedMetrics := TranslateOtToCWMetric(&rm, config)
+	cwm, totalDroppedMetrics := TranslateOtToCWMetric(&rm, ZeroAndSingleDimensionRollup, "")
 	assert.Equal(t, 1, totalDroppedMetrics)
 	assert.NotNil(t, cwm)
 	assert.Equal(t, 5, len(cwm))
@@ -97,13 +91,10 @@ func TestTranslateOtToCWMetricWithInstrLibrary(t *testing.T) {
 }
 
 func TestTranslateOtToCWMetricWithoutInstrLibrary(t *testing.T) {
-	config := &Config{
-		Namespace:             "",
-		DimensionRollupOption: ZeroAndSingleDimensionRollup,
-	}
+
 	md := createMetricTestData()
 	rm := internaldata.OCToMetrics(md).ResourceMetrics().At(0)
-	cwm, totalDroppedMetrics := TranslateOtToCWMetric(&rm, config)
+	cwm, totalDroppedMetrics := TranslateOtToCWMetric(&rm, ZeroAndSingleDimensionRollup, "")
 	assert.Equal(t, 1, totalDroppedMetrics)
 	assert.NotNil(t, cwm)
 	assert.Equal(t, 5, len(cwm))
@@ -136,10 +127,6 @@ func TestTranslateOtToCWMetricWithoutInstrLibrary(t *testing.T) {
 }
 
 func TestTranslateOtToCWMetricWithNameSpace(t *testing.T) {
-	config := &Config{
-		Namespace:             "",
-		DimensionRollupOption: ZeroAndSingleDimensionRollup,
-	}
 	md := consumerdata.MetricsData{
 		Node: &commonpb.Node{
 			LibraryInfo: &commonpb.LibraryInfo{ExporterVersion: "SomeVersion"},
@@ -152,7 +139,7 @@ func TestTranslateOtToCWMetricWithNameSpace(t *testing.T) {
 		Metrics: []*metricspb.Metric{},
 	}
 	rm := internaldata.OCToMetrics(md).ResourceMetrics().At(0)
-	cwm, totalDroppedMetrics := TranslateOtToCWMetric(&rm, config)
+	cwm, totalDroppedMetrics := TranslateOtToCWMetric(&rm, ZeroAndSingleDimensionRollup, "")
 	assert.Equal(t, 0, totalDroppedMetrics)
 	assert.Nil(t, cwm)
 	assert.Equal(t, 0, len(cwm))
@@ -244,7 +231,7 @@ func TestTranslateOtToCWMetricWithNameSpace(t *testing.T) {
 		},
 	}
 	rm = internaldata.OCToMetrics(md).ResourceMetrics().At(0)
-	cwm, totalDroppedMetrics = TranslateOtToCWMetric(&rm, config)
+	cwm, totalDroppedMetrics = TranslateOtToCWMetric(&rm, ZeroAndSingleDimensionRollup, "")
 	assert.Equal(t, 0, totalDroppedMetrics)
 	assert.NotNil(t, cwm)
 	assert.Equal(t, 1, len(cwm))
@@ -282,9 +269,6 @@ func TestGetCWMetrics(t *testing.T) {
 	namespace := "Namespace"
 	OTelLib := "OTelLib"
 	instrumentationLibName := "InstrLibName"
-	config := &Config{
-		DimensionRollupOption: "",
-	}
 
 	testCases := []struct {
 		testName string
@@ -772,7 +756,7 @@ func TestGetCWMetrics(t *testing.T) {
 			assert.Equal(t, 1, metrics.Len())
 			metric := metrics.At(0)
 
-			cwMetrics := getCWMetrics(&metric, namespace, instrumentationLibName, config)
+			cwMetrics := getCWMetrics(&metric, namespace, instrumentationLibName, "")
 			assert.Equal(t, len(tc.expected), len(cwMetrics))
 
 			for i, expected := range tc.expected {
@@ -784,42 +768,6 @@ func TestGetCWMetrics(t *testing.T) {
 			}
 		})
 	}
-
-	t.Run("Unhandled metric type", func(t *testing.T) {
-		metric := pdata.NewMetric()
-		metric.InitEmpty()
-		metric.SetName("foo")
-		metric.SetUnit("Count")
-		metric.SetDataType(pdata.MetricDataTypeIntHistogram)
-
-		obs, logs := observer.New(zap.WarnLevel)
-		obsConfig := &Config{
-			DimensionRollupOption: "",
-			logger:                zap.New(obs),
-		}
-
-		cwMetrics := getCWMetrics(&metric, namespace, instrumentationLibName, obsConfig)
-		assert.Nil(t, cwMetrics)
-
-		// Test output warning logs
-		expectedLogs := []observer.LoggedEntry{
-			{
-				Entry: zapcore.Entry{Level: zap.WarnLevel, Message: "Unhandled metric data type."},
-				Context: []zapcore.Field{
-					zap.String("DataType", "IntHistogram"),
-					zap.String("Name", "foo"),
-					zap.String("Unit", "Count"),
-				},
-			},
-		}
-		assert.Equal(t, 1, logs.Len())
-		assert.Equal(t, expectedLogs, logs.AllUntimed())
-	})
-
-	t.Run("Nil metric", func(t *testing.T) {
-		cwMetrics := getCWMetrics(nil, namespace, instrumentationLibName, config)
-		assert.Nil(t, cwMetrics)
-	})
 }
 
 func TestBuildCWMetric(t *testing.T) {
@@ -982,7 +930,6 @@ func TestBuildCWMetric(t *testing.T) {
 		}
 		assert.Equal(t, expectedFields, cwMetric.Fields)
 	})
-
 	t.Run("Invalid datapoint type", func(t *testing.T) {
 		metric.SetDataType(pdata.MetricDataTypeIntGauge)
 		dp := pdata.NewIntHistogramDataPoint()
@@ -1070,112 +1017,6 @@ func TestCalculateRate(t *testing.T) {
 	assert.Equal(t, 0, rate)
 	rate = calculateRate(fields, curDoubleValue, curTime)
 	assert.Equal(t, 0.5, rate)
-}
-
-func TestDimensionRollup(t *testing.T) {
-	testCases := []struct {
-		testName               string
-		dimensionRollupOption  string
-		dims                   []string
-		instrumentationLibName string
-		expected               [][]string
-	}{
-		{
-			"no rollup w/o instrumentation library name",
-			"",
-			[]string{"a", "b", "c"},
-			noInstrumentationLibraryName,
-			nil,
-		},
-		{
-			"no rollup w/ instrumentation library name",
-			"",
-			[]string{"a", "b", "c"},
-			"cloudwatch-otel",
-			nil,
-		},
-		{
-			"single dim w/o instrumentation library name",
-			SingleDimensionRollupOnly,
-			[]string{"a", "b", "c"},
-			noInstrumentationLibraryName,
-			[][]string{
-				{"a"},
-				{"b"},
-				{"c"},
-			},
-		},
-		{
-			"single dim w/ instrumentation library name",
-			SingleDimensionRollupOnly,
-			[]string{"a", "b", "c"},
-			"cloudwatch-otel",
-			[][]string{
-				{OTellibDimensionKey, "a"},
-				{OTellibDimensionKey, "b"},
-				{OTellibDimensionKey, "c"},
-			},
-		},
-		{
-			"single dim w/o instrumentation library name and only one label",
-			SingleDimensionRollupOnly,
-			[]string{"a"},
-			noInstrumentationLibraryName,
-			nil,
-		},
-		{
-			"single dim w/ instrumentation library name and only one label",
-			SingleDimensionRollupOnly,
-			[]string{"a"},
-			"cloudwatch-otel",
-			nil,
-		},
-		{
-			"zero + single dim w/o instrumentation library name",
-			ZeroAndSingleDimensionRollup,
-			[]string{"a", "b", "c"},
-			noInstrumentationLibraryName,
-			[][]string{
-				{},
-				{"a"},
-				{"b"},
-				{"c"},
-			},
-		},
-		{
-			"zero + single dim w/ instrumentation library name",
-			ZeroAndSingleDimensionRollup,
-			[]string{"a", "b", "c"},
-			"cloudwatch-otel",
-			[][]string{
-				{OTellibDimensionKey},
-				{OTellibDimensionKey, "a"},
-				{OTellibDimensionKey, "b"},
-				{OTellibDimensionKey, "c"},
-			},
-		},
-		{
-			"zero dim rollup w/o instrumentation library name and no labels",
-			ZeroAndSingleDimensionRollup,
-			[]string{},
-			noInstrumentationLibraryName,
-			nil,
-		},
-		{
-			"zero dim rollup w/ instrumentation library name and no labels",
-			ZeroAndSingleDimensionRollup,
-			[]string{},
-			"cloudwatch-otel",
-			nil,
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.testName, func(t *testing.T) {
-			rolledUp := dimensionRollup(tc.dimensionRollupOption, tc.dims, tc.instrumentationLibName)
-			assert.Equal(t, tc.expected, rolledUp)
-		})
-	}
 }
 
 func readFromFile(filename string) string {
@@ -1452,28 +1293,20 @@ func BenchmarkTranslateOtToCWMetricWithInstrLibrary(b *testing.B) {
 	ilm := ilms.At(0)
 	ilm.InstrumentationLibrary().InitEmpty()
 	ilm.InstrumentationLibrary().SetName("cloudwatch-lib")
-	config := &Config{
-		Namespace:             "",
-		DimensionRollupOption: ZeroAndSingleDimensionRollup,
-	}
 
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		TranslateOtToCWMetric(&rm, config)
+		TranslateOtToCWMetric(&rm, ZeroAndSingleDimensionRollup, "")
 	}
 }
 
 func BenchmarkTranslateOtToCWMetricWithoutInstrLibrary(b *testing.B) {
 	md := createMetricTestData()
 	rm := internaldata.OCToMetrics(md).ResourceMetrics().At(0)
-	config := &Config{
-		Namespace:             "",
-		DimensionRollupOption: ZeroAndSingleDimensionRollup,
-	}
 
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		TranslateOtToCWMetric(&rm, config)
+		TranslateOtToCWMetric(&rm, ZeroAndSingleDimensionRollup, "")
 	}
 }
 
@@ -1490,18 +1323,161 @@ func BenchmarkTranslateOtToCWMetricWithNamespace(b *testing.B) {
 		Metrics: []*metricspb.Metric{},
 	}
 	rm := internaldata.OCToMetrics(md).ResourceMetrics().At(0)
-	config := &Config{
-		Namespace:             "",
-		DimensionRollupOption: ZeroAndSingleDimensionRollup,
+	cwmMap := make(map[string]*CWMetrics)
+	batchedCwmMap := make(map[string]*GroupedCWMetric)
+	cwm, totalDroppedMetrics := TranslateOtToCWMetric(&rm, ZeroAndSingleDimensionRollup, cwmMap, batchedCwmMap, "")
+	assert.Equal(t, 0, totalDroppedMetrics)
+	assert.Nil(t, cwm)
+	assert.Equal(t, 0, len(cwm))
+	md = consumerdata.MetricsData{
+		Node: &commonpb.Node{
+			LibraryInfo: &commonpb.LibraryInfo{ExporterVersion: "SomeVersion"},
+		},
+		Resource: &resourcepb.Resource{
+			Labels: map[string]string{
+				conventions.AttributeServiceNamespace: "myServiceNS",
+			},
+		},
+		Metrics: []*metricspb.Metric{
+			{
+				MetricDescriptor: &metricspb.MetricDescriptor{
+					Name:        "spanCounter",
+					Description: "Counting all the spans",
+					Unit:        "Count",
+					Type:        metricspb.MetricDescriptor_CUMULATIVE_INT64,
+					LabelKeys: []*metricspb.LabelKey{
+						{Key: "spanName"},
+						{Key: "isItAnError"},
+					},
+				},
+				Timeseries: []*metricspb.TimeSeries{
+					{
+						LabelValues: []*metricspb.LabelValue{
+							{Value: "testSpan", HasValue: true},
+							{Value: "false", HasValue: true},
+						},
+						Points: []*metricspb.Point{
+							{
+								Timestamp: &timestamp.Timestamp{
+									Seconds: 100,
+								},
+								Value: &metricspb.Point_Int64Value{
+									Int64Value: 1,
+								},
+							},
+						},
+					},
+				},
+			},
+			{
+				MetricDescriptor: &metricspb.MetricDescriptor{
+					Name:        "spanCounter",
+					Description: "Counting all the spans",
+					Unit:        "Count",
+					Type:        metricspb.MetricDescriptor_CUMULATIVE_INT64,
+				},
+				Timeseries: []*metricspb.TimeSeries{},
+			},
+			{
+				MetricDescriptor: &metricspb.MetricDescriptor{
+					Name:        "spanGaugeCounter",
+					Description: "Counting all the spans",
+					Unit:        "Count",
+					Type:        metricspb.MetricDescriptor_GAUGE_INT64,
+				},
+				Timeseries: []*metricspb.TimeSeries{},
+			},
+			{
+				MetricDescriptor: &metricspb.MetricDescriptor{
+					Name:        "spanGaugeDoubleCounter",
+					Description: "Counting all the spans",
+					Unit:        "Count",
+					Type:        metricspb.MetricDescriptor_GAUGE_DOUBLE,
+				},
+				Timeseries: []*metricspb.TimeSeries{},
+			},
+			{
+				MetricDescriptor: &metricspb.MetricDescriptor{
+					Name:        "spanDoubleCounter",
+					Description: "Counting all the spans",
+					Unit:        "Count",
+					Type:        metricspb.MetricDescriptor_CUMULATIVE_DOUBLE,
+				},
+				Timeseries: []*metricspb.TimeSeries{},
+			},
+			{
+				MetricDescriptor: &metricspb.MetricDescriptor{
+					Name:        "spanDoubleCounter",
+					Description: "Counting all the spans",
+					Unit:        "Count",
+					Type:        metricspb.MetricDescriptor_CUMULATIVE_DISTRIBUTION,
+				},
+				Timeseries: []*metricspb.TimeSeries{},
+			},
+		},
 	}
+	rm = internaldata.OCToMetrics(md).ResourceMetrics().At(0)
+	cwm, totalDroppedMetrics = TranslateOtToCWMetric(&rm, ZeroAndSingleDimensionRollup, cwmMap, batchedCwmMap, "")
+	assert.Equal(t, 0, totalDroppedMetrics)
+	assert.NotNil(t, cwm)
+	assert.Equal(t, 1, len(cwm))
 
 	b.ResetTimer()
 	for n := 0; n < b.N; n++ {
-		TranslateOtToCWMetric(&rm, config)
+		TranslateOtToCWMetric(&rm, ZeroAndSingleDimensionRollup, "")
 	}
 }
 
-func BenchmarkTranslateCWMetricToEMF(b *testing.B) {
+func TestBatchCWMetrics(t *testing.T) {
+	cwMetricsMap := make(map[string]*CWMetrics)
+	groupedCWMetricMap := make(map[string]*GroupedCWMetric)
+
+	cwMeasurement_1 := CwMeasurement{
+		Namespace:  "eks-aoc",
+		Dimensions: [][]string{{"controller_pod", "kubernetes_node"}},
+		Metrics: []map[string]string{{
+			"Name": "nginx_ingress_controller_nginx_process_connections",
+			"Unit": "",
+		}},
+	}
+	timestamp_1 := int64(1603909497679)
+	fields_1 := make(map[string]interface{})
+	fields_1["nginx_ingress_controller_nginx_process_connections"] = 0
+	fields_1["controller_pod"] = "my-nginx-ingress-nginx-controller-bbf548c86-wl84b"
+	fields_1["kubernetes_node"] = "ip-192-168-17-95.us-west-2.compute.internal"
+
+	met_1 := &CWMetrics{
+		Timestamp:    timestamp_1,
+		Fields:       fields_1,
+		Measurements: []CwMeasurement{cwMeasurement_1},
+	}
+
+	cwMeasurement_2 := CwMeasurement{
+		Namespace:  "eks-aoc",
+		Dimensions: [][]string{{"controller_pod", "kubernetes_node"}},
+		Metrics: []map[string]string{{
+			"Name": "nginx_ingress_controller_nginx_process_connections_total",
+			"Unit": "",
+		}},
+	}
+	timestamp_2 := int64(1603909497679)
+	fields_2 := make(map[string]interface{})
+	fields_2["nginx_ingress_controller_nginx_process_connections_total"] = 2.383293611773137
+	fields_2["controller_pod"] = "my-nginx-ingress-nginx-controller-bbf548c86-wl84b"
+	fields_2["kubernetes_node"] = "ip-192-168-17-95.us-west-2.compute.internal"
+
+	met_2 := &CWMetrics{
+		Timestamp:    timestamp_2,
+		Fields:       fields_2,
+		Measurements: []CwMeasurement{cwMeasurement_2},
+	}
+	key := "controller_podkubernetes_node"
+	batchCWMetrics([]*CWMetrics{met_1, met_2}, groupedCWMetricMap, cwMetricsMap)
+	assert.Equal(t, len(groupedCWMetricMap), 1)
+	assert.Equal(t, len(groupedCWMetricMap[key].Metrics), 2)
+}
+
+func TestTranslateCWMetricToEMF(t *testing.T) {
 	cwMeasurement := CwMeasurement{
 		Namespace:  "test-emf",
 		Dimensions: [][]string{{"OTelLib"}, {"OTelLib", "spanName"}},
@@ -1522,15 +1498,56 @@ func BenchmarkTranslateCWMetricToEMF(b *testing.B) {
 		Measurements: []CwMeasurement{cwMeasurement},
 	}
 
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
-		TranslateCWMetricToEMF([]*CWMetrics{met})
+func TestTranslateBatchedMetricToEMF(t *testing.T) {
+	dimensions := map[string]interface{} {"Namespace": "kube-system",}
+	metrics := map[string]interface{} {"go_goroutines": 0,}
+	metricUnits := map[string]string {"go_goroutines": "",}
+	namespace := string("kubernetes-service-endpoints")
+	timestamp := int64(1603750966417)
+
+	met := &GroupedCWMetric{
+		Namespace:	  namespace,
+		Timestamp:    timestamp,
+		Dimensions:   dimensions,
+		Metrics: 	  metrics,
+		MetricUnits:  metricUnits,
 	}
+
+	key := string("NamespaceOTLibServicecontainer_nameeks_amazonaws_com_componentk8s_appkubernetes_io_cluster_servicekubernetes_io_namekubernetes_nodepod_name")
+	res := map[string]*GroupedCWMetric{}
+	res[key] = met
+	inputLogEvent := TranslateBatchedMetricToEMF(res)
+
+	assert.Equal(t, readFromFile("testdata/testTranslateBatchedMetricToEMF.json"), *inputLogEvent[0].InputLogEvent.Message, "Expect to be equal")
 }
 
-func BenchmarkDimensionRollup(b *testing.B) {
-	dimensions := []string{"a", "b", "c"}
-	for n := 0; n < b.N; n++ {
-		dimensionRollup(ZeroAndSingleDimensionRollup, dimensions, "cloudwatch-otel")
+func TestCalculateRate(t *testing.T) {
+	prevValue := int64(0)
+	curValue := int64(10)
+	fields := make(map[string]interface{})
+	fields["OTLib"] = "cloudwatch-otel"
+	fields["spanName"] = "test"
+	fields["spanCounter"] = prevValue
+	fields["type"] = "Int64"
+	prevTime := time.Now().UnixNano() / int64(time.Millisecond)
+	curTime := time.Unix(0, prevTime*int64(time.Millisecond)).Add(time.Second*10).UnixNano() / int64(time.Millisecond)
+	rate := calculateRate(fields, prevValue, prevTime)
+	assert.Equal(t, 0, rate)
+	rate = calculateRate(fields, curValue, curTime)
+	assert.Equal(t, int64(1), rate)
+
+	prevDoubleValue := 0.0
+	curDoubleValue := 5.0
+	fields["type"] = "Float64"
+	rate = calculateRate(fields, prevDoubleValue, prevTime)
+	assert.Equal(t, 0, rate)
+	rate = calculateRate(fields, curDoubleValue, curTime)
+	assert.Equal(t, 0.5, rate)
+}
+
+func readFromFile(filename string) string {
+	data, err := ioutil.ReadFile(filename)
+	if err != nil {
+		panic(err)
 	}
 }

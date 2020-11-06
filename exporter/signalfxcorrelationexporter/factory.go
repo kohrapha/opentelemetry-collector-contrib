@@ -66,7 +66,7 @@ func createTraceExporter(
 	_ context.Context,
 	params component.ExporterCreateParams,
 	cfg configmodels.Exporter,
-) (component.TracesExporter, error) {
+) (component.TraceExporter, error) {
 	eCfg := cfg.(*Config)
 	return newTraceExporter(eCfg, params)
 }

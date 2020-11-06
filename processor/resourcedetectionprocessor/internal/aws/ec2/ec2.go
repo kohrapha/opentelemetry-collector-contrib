@@ -16,7 +16,6 @@ package ec2
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/aws/aws-sdk-go/aws/session"
 	"go.opentelemetry.io/collector/consumer/pdata"
@@ -53,24 +52,17 @@ func (d *Detector) Detect(ctx context.Context) (pdata.Resource, error) {
 
 	meta, err := d.provider.get(ctx)
 	if err != nil {
-		return res, fmt.Errorf("failed getting identity document: %w", err)
-	}
-
-	hostname, err := d.provider.hostname(ctx)
-	if err != nil {
-		return res, fmt.Errorf("failed getting hostname: %w", err)
+		return res, err
 	}
 
 	attr := res.Attributes()
 	attr.InsertString(conventions.AttributeCloudProvider, conventions.AttributeCloudProviderAWS)
-	attr.InsertString("cloud.infrastructure_service", "EC2")
 	attr.InsertString(conventions.AttributeCloudRegion, meta.Region)
 	attr.InsertString(conventions.AttributeCloudAccount, meta.AccountID)
 	attr.InsertString(conventions.AttributeCloudZone, meta.AvailabilityZone)
 	attr.InsertString(conventions.AttributeHostID, meta.InstanceID)
 	attr.InsertString(conventions.AttributeHostImageID, meta.ImageID)
 	attr.InsertString(conventions.AttributeHostType, meta.InstanceType)
-	attr.InsertString(conventions.AttributeHostName, hostname)
 
 	return res, nil
 }

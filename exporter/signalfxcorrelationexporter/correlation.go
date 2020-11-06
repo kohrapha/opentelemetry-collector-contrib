@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package signalfxcorrelationexporter
+package sapmexporter
 
 import (
 	"context"
@@ -26,7 +26,7 @@ import (
 	"go.opentelemetry.io/collector/consumer/pdata"
 	"go.uber.org/zap"
 
-	"github.com/open-telemetry/opentelemetry-collector-contrib/internal/splunk"
+	"github.com/open-telemetry/opentelemetry-collector-contrib/internal/common/splunk"
 )
 
 // Tracker correlation
@@ -56,12 +56,12 @@ func NewTracker(cfg *Config, params component.ExporterCreateParams) *Tracker {
 func newCorrelationClient(cfg *Config, params component.ExporterCreateParams) (
 	*correlationContext, error,
 ) {
-	corrURL, err := url.Parse(cfg.Endpoint)
+	corrURL, err := url.Parse(cfg.Correlation.Endpoint)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse correlation endpoint URL %q: %v", cfg.Endpoint, err)
+		return nil, fmt.Errorf("failed to parse correlation endpoint URL %q: %v", cfg.Correlation.Endpoint, err)
 	}
 
-	httpClient, err := cfg.ToClient()
+	httpClient, err := cfg.Correlation.ToClient()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create correlation API client: %v", err)
 	}
@@ -69,7 +69,7 @@ func newCorrelationClient(cfg *Config, params component.ExporterCreateParams) (
 	ctx, cancel := context.WithCancel(context.Background())
 
 	client, err := correlations.NewCorrelationClient(newZapShim(params.Logger), ctx, httpClient, correlations.ClientConfig{
-		Config:      cfg.Config,
+		Config:      cfg.Correlation.Config,
 		AccessToken: cfg.AccessToken,
 		URL:         corrURL,
 	})
@@ -112,14 +112,14 @@ func (cor *Tracker) AddSpans(ctx context.Context, traces pdata.Traces) {
 
 		cor.traceTracker = tracetracker.New(
 			newZapShim(cor.params.Logger),
-			cor.cfg.StaleServiceTimeout,
+			cor.cfg.Correlation.StaleServiceTimeout,
 			cor.correlation,
 			map[string]string{
 				string(hostID.Key): hostID.ID,
 			},
 			false,
 			nil,
-			cor.cfg.SyncAttributes)
+			cor.cfg.Correlation.SyncAttributes)
 		cor.Start()
 	})
 

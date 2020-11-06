@@ -84,13 +84,13 @@ func (rCfg *Config) validate() error {
 	return nil
 }
 
-// CreateTracesReceiver creates a trace receiver based on provided config.
+// CreateTraceReceiver creates a trace receiver based on provided config.
 func createTraceReceiver(
 	ctx context.Context,
 	params component.ReceiverCreateParams,
 	cfg configmodels.Receiver,
 	nextConsumer consumer.TracesConsumer,
-) (component.TracesReceiver, error) {
+) (component.TraceReceiver, error) {
 	// assert config is SAPM config
 	rCfg := cfg.(*Config)
 

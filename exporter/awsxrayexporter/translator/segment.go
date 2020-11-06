@@ -15,9 +15,9 @@
 package translator
 
 import (
+	"bytes"
 	"encoding/binary"
 	"encoding/hex"
-	"fmt"
 	"math/rand"
 	"net/url"
 	"regexp"
@@ -33,12 +33,14 @@ import (
 
 // AWS X-Ray acceptable values for origin field.
 const (
-	OriginEC2        = "AWS::EC2::Instance"
-	OriginECS        = "AWS::ECS::Container"
-	OriginECSEC2     = "AWS::ECS::EC2"
-	OriginECSFargate = "AWS::ECS::Fargate"
-	OriginEB         = "AWS::ElasticBeanstalk::Environment"
-	OriginEKS        = "AWS::EKS::Container"
+	OriginEC2 = "AWS::EC2::Instance"
+	OriginECS = "AWS::ECS::Container"
+	OriginEB  = "AWS::ElasticBeanstalk::Environment"
+	OriginEKS = "AWS::EKS::Container"
+)
+
+var (
+	zeroSpanID = []byte{0, 0, 0, 0, 0, 0, 0, 0}
 )
 
 var (
@@ -65,12 +67,9 @@ var (
 
 // MakeSegmentDocumentString converts an OpenTelemetry Span to an X-Ray Segment and then serialzies to JSON
 func MakeSegmentDocumentString(span pdata.Span, resource pdata.Resource, indexedAttrs []string, indexAllAttrs bool) (string, error) {
-	segment, err := MakeSegment(span, resource, indexedAttrs, indexAllAttrs)
-	if err != nil {
-		return "", err
-	}
+	segment := MakeSegment(span, resource, indexedAttrs, indexAllAttrs)
 	w := writers.borrow()
-	if err := w.Encode(*segment); err != nil {
+	if err := w.Encode(segment); err != nil {
 		return "", err
 	}
 	jsonStr := w.String()
@@ -79,7 +78,7 @@ func MakeSegmentDocumentString(span pdata.Span, resource pdata.Resource, indexed
 }
 
 // MakeSegment converts an OpenTelemetry Span to an X-Ray Segment
-func MakeSegment(span pdata.Span, resource pdata.Resource, indexedAttrs []string, indexAllAttrs bool) (*awsxray.Segment, error) {
+func MakeSegment(span pdata.Span, resource pdata.Resource, indexedAttrs []string, indexAllAttrs bool) awsxray.Segment {
 	var segmentType string
 
 	storeResource := true
@@ -89,17 +88,13 @@ func MakeSegment(span pdata.Span, resource pdata.Resource, indexedAttrs []string
 		storeResource = false
 	}
 
-	// convert trace id
-	traceID, err := convertToAmazonTraceID(span.TraceID())
-	if err != nil {
-		return nil, err
-	}
-
 	var (
+		traceID                                = convertToAmazonTraceID(span.TraceID())
 		startTime                              = timestampToFloatSeconds(span.StartTime())
 		endTime                                = timestampToFloatSeconds(span.EndTime())
 		httpfiltered, http                     = makeHTTP(span)
 		isError, isFault, causefiltered, cause = makeCause(span, httpfiltered, resource)
+		isThrottled                            = !span.Status().IsNil() && span.Status().Code() == pdata.StatusCodeResourceExhausted
 		origin                                 = determineAwsOrigin(resource)
 		awsfiltered, aws                       = makeAws(causefiltered, resource)
 		service                                = makeService(resource)
@@ -175,15 +170,16 @@ func MakeSegment(span pdata.Span, resource pdata.Resource, indexedAttrs []string
 		namespace = "remote"
 	}
 
-	return &awsxray.Segment{
-		ID:          awsxray.String(span.SpanID().HexString()),
+	return awsxray.Segment{
+		ID:          awsxray.String(convertToAmazonSpanID(span.SpanID().Bytes())),
 		TraceID:     awsxray.String(traceID),
 		Name:        awsxray.String(name),
 		StartTime:   awsP.Float64(startTime),
 		EndTime:     awsP.Float64(endTime),
-		ParentID:    awsxray.String(span.ParentSpanID().HexString()),
+		ParentID:    awsxray.String(convertToAmazonSpanID(span.ParentSpanID().Bytes())),
 		Fault:       awsP.Bool(isFault),
 		Error:       awsP.Bool(isError),
+		Throttle:    awsP.Bool(isThrottled),
 		Cause:       cause,
 		Origin:      awsxray.String(origin),
 		Namespace:   awsxray.String(namespace),
@@ -195,7 +191,7 @@ func MakeSegment(span pdata.Span, resource pdata.Resource, indexedAttrs []string
 		Annotations: annotations,
 		Metadata:    metadata,
 		Type:        awsxray.String(segmentType),
-	}, nil
+	}
 }
 
 // newTraceID generates a new valid X-Ray TraceID
@@ -207,7 +203,7 @@ func newTraceID() pdata.TraceID {
 	if err != nil {
 		panic(err)
 	}
-	return pdata.NewTraceID(r)
+	return pdata.NewTraceID(r[:])
 }
 
 // newSegmentID generates a new valid X-Ray SegmentID
@@ -217,7 +213,7 @@ func newSegmentID() pdata.SpanID {
 	if err != nil {
 		panic(err)
 	}
-	return pdata.NewSpanID(r)
+	return pdata.NewSpanID(r[:])
 }
 
 func determineAwsOrigin(resource pdata.Resource) string {
@@ -230,37 +226,6 @@ func determineAwsOrigin(resource pdata.Resource) string {
 			return ""
 		}
 	}
-
-	// TODO(willarmiros): Only use infrastructure_service for origin resolution once detectors for all AWS environments are
-	// implemented for robustness
-	if is, present := resource.Attributes().Get("cloud.infrastructure_service"); present {
-		switch is.StringVal() {
-		case "EKS":
-			return OriginEKS
-		case "ElasticBeanstalk":
-			return OriginEB
-		case "ECS":
-			lt, present := resource.Attributes().Get("aws.ecs.launchtype")
-			if !present {
-				return OriginECS
-			}
-			switch lt.StringVal() {
-			case "ec2":
-				return OriginECSEC2
-			case "fargate":
-				return OriginECSFargate
-			default:
-				return OriginECS
-			}
-		case "EC2":
-			return OriginEC2
-
-		// If infrastructure_service is defined with a non-AWS value, we should not assign it an AWS origin
-		default:
-			return ""
-		}
-	}
-
 	// EKS > EB > ECS > EC2
 	_, eks := resource.Attributes().Get(semconventions.AttributeK8sCluster)
 	if eks {
@@ -274,11 +239,7 @@ func determineAwsOrigin(resource pdata.Resource) string {
 	if ecs {
 		return OriginECS
 	}
-	_, ec2 := resource.Attributes().Get(semconventions.AttributeHostID)
-	if ec2 {
-		return OriginEC2
-	}
-	return ""
+	return OriginEC2
 }
 
 // convertToAmazonTraceID converts a trace ID to the Amazon format.
@@ -292,7 +253,7 @@ func determineAwsOrigin(resource pdata.Resource) string {
 //  * For example, 10:00AM December 2nd, 2016 PST in epoch time is 1480615200 seconds,
 //    or 58406520 in hexadecimal.
 //  * A 96-bit identifier for the trace, globally unique, in 24 hexadecimal digits.
-func convertToAmazonTraceID(traceID pdata.TraceID) (string, error) {
+func convertToAmazonTraceID(traceID pdata.TraceID) string {
 	const (
 		// maxAge of 28 days.  AWS has a 30 day limit, let's be conservative rather than
 		// hit the limit
@@ -303,20 +264,20 @@ func convertToAmazonTraceID(traceID pdata.TraceID) (string, error) {
 	)
 
 	var (
-		content      = [traceIDLength]byte{}
-		epochNow     = time.Now().Unix()
-		traceIDBytes = traceID.Bytes()
-		epoch        = int64(binary.BigEndian.Uint32(traceIDBytes[0:4]))
-		b            = [4]byte{}
+		content  = [traceIDLength]byte{}
+		epochNow = time.Now().Unix()
+		epoch    = int64(binary.BigEndian.Uint32(traceID.Bytes()[0:4]))
+		b        = [4]byte{}
 	)
 
 	// If AWS traceID originally came from AWS, no problem.  However, if oc generated
 	// the traceID, then the epoch may be outside the accepted AWS range of within the
 	// past 30 days.
 	//
-	// In that case, we return invalid traceid error
+	// In that case, we use the current time as the epoch and accept that a new span
+	// may be created
 	if delta := epochNow - epoch; delta > maxAge || delta < -maxSkew {
-		return "", fmt.Errorf("invalid xray traceid: %s", traceID.HexString())
+		epoch = epochNow
 	}
 
 	binary.BigEndian.PutUint32(b[0:4], uint32(epoch))
@@ -325,9 +286,18 @@ func convertToAmazonTraceID(traceID pdata.TraceID) (string, error) {
 	content[1] = '-'
 	hex.Encode(content[2:10], b[0:4])
 	content[10] = '-'
-	hex.Encode(content[identifierOffset:], traceIDBytes[4:16]) // overwrite with identifier
+	hex.Encode(content[identifierOffset:], traceID.Bytes()[4:16]) // overwrite with identifier
 
-	return string(content[0:traceIDLength]), nil
+	return string(content[0:traceIDLength])
+}
+
+// convertToAmazonSpanID generates an Amazon spanID from a trace.SpanID - a 64-bit identifier
+// for the Segment, unique among segments in the same trace, in 16 hexadecimal digits.
+func convertToAmazonSpanID(v []byte) string {
+	if v == nil || bytes.Equal(v, zeroSpanID) {
+		return ""
+	}
+	return hex.EncodeToString(v[0:8])
 }
 
 func timestampToFloatSeconds(ts pdata.TimestampUnixNano) float64 {
