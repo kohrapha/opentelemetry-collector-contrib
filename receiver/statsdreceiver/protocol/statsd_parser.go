@@ -182,6 +182,10 @@ func buildPoint(parsedMetric *statsDMetric) (*metricspb.Point, error) {
 		return buildTimerPoint(parsedMetric, now, func(parsedMetric *statsDMetric) {
 			parsedMetric.metricType = metricspb.MetricDescriptor_GAUGE_DOUBLE
 		})
+	case "ms":
+		return buildTimerPoint(parsedMetric, now, func(parsedMetric *statsDMetric) {
+			parsedMetric.metricType = metricspb.MetricDescriptor_GAUGE_DOUBLE
+		})
 	}
 
 	return nil, fmt.Errorf("unhandled metric type: %s", parsedMetric.statsdMetricType)
@@ -217,6 +221,23 @@ func buildGaugePoint(parsedMetric *statsDMetric, now *timestamppb.Timestamp,
 	f, err := strconv.ParseFloat(parsedMetric.value, 64)
 	if err != nil {
 		return nil, fmt.Errorf("gauge: parse metric value string: %s", parsedMetric.value)
+	}
+	point = &metricspb.Point{
+		Timestamp: now,
+		Value: &metricspb.Point_DoubleValue{
+			DoubleValue: f,
+		},
+	}
+	metricTypeSetter(parsedMetric)
+	return point, nil
+}
+
+func buildTimerPoint(parsedMetric *statsDMetric, now *timestamppb.Timestamp, metricTypeSetter func(parsedMetric *statsDMetric)) (*metricspb.Point, error) {
+	var point *metricspb.Point
+	parsedMetric.unit = "ms"
+	f, err := strconv.ParseFloat(parsedMetric.value, 64)
+	if err != nil {
+		return nil, fmt.Errorf("timer: failed to parse metric value to float: %s", parsedMetric.value)
 	}
 	point = &metricspb.Point{
 		Timestamp: now,
