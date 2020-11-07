@@ -27,7 +27,6 @@ import (
 	"go.opentelemetry.io/collector/config/configmodels"
 	"go.opentelemetry.io/collector/consumer/consumererror"
 	"go.opentelemetry.io/collector/consumer/pdata"
-	"go.opentelemetry.io/collector/exporter/exporterhelper"
 	"go.opentelemetry.io/collector/obsreport"
 	"go.uber.org/zap"
 )
@@ -67,19 +66,6 @@ func New(
 	svcStructuredLog := NewCloudWatchLogsClient(logger, awsConfig, session)
 	collectorIdentifier, _ := uuid.NewRandom()
 
-	// Initialize metric declarations and filter out invalid ones
-	emfConfig := config.(*Config)
-	var validDeclarations []*MetricDeclaration
-	for _, declaration := range emfConfig.MetricDeclarations {
-		err := declaration.Init(logger)
-		if err != nil {
-			logger.Warn("Dropped metric declaration. Error: " + err.Error() + ".")
-		} else {
-			validDeclarations = append(validDeclarations, declaration)
-		}
-	}
-	emfConfig.MetricDeclarations = validDeclarations
-
 	emfExporter := &emfExporter{
 		svcStructuredLog: svcStructuredLog,
 		config:           config,
@@ -90,26 +76,6 @@ func New(
 	emfExporter.groupStreamToPusherMap = map[string]map[string]Pusher{}
 
 	return emfExporter, nil
-}
-
-// NewEmfExporter creates a new exporter using exporterhelper
-func NewEmfExporter(
-	config configmodels.Exporter,
-	params component.ExporterCreateParams,
-) (component.MetricsExporter, error) {
-
-	exp, err := New(config, params)
-	if err != nil {
-		return nil, err
-	}
-
-	return exporterhelper.NewMetricsExporter(
-		config,
-		params.Logger,
-		exp.(*emfExporter).pushMetricsData,
-		exporterhelper.WithResourceToTelemetryConversion(config.(*Config).ResourceToTelemetrySettings),
-		exporterhelper.WithShutdown(exp.(*emfExporter).Shutdown),
-	)
 }
 
 func (emf *emfExporter) pushMetricsData(_ context.Context, md pdata.Metrics) (droppedTimeSeries int, err error) {
@@ -206,26 +172,11 @@ func (emf *emfExporter) Start(ctx context.Context, host component.Host) error {
 }
 
 func generateLogEventFromMetric(metric pdata.Metrics, config *Config) ([]*LogEvent, int, string) {
-	namespace := config.Namespace
-	rms := metric.ResourceMetrics()
-	cwMetricLists := []*CWMetrics{}
-	var cwm []*CWMetrics
 	var totalDroppedMetrics int
-
-	for i := 0; i < rms.Len(); i++ {
-		rm := rms.At(i)
-		if rm.IsNil() {
-			continue
-		}
-		cwm, totalDroppedMetrics = TranslateOtToCWMetric(&rm, config)
-		if len(cwm) > 0 && len(cwm[0].Measurements) > 0 {
-			namespace = cwm[0].Measurements[0].Namespace
-		}
-		// append all datapoint metrics in the request into CWMetric list
-		cwMetricLists = append(cwMetricLists, cwm...)
-	}
-
-	return TranslateCWMetricToEMF(cwMetricLists, config.logger), totalDroppedMetrics, namespace
+	namespace := config.Namespace
+	groupedMetricMap := make(map[string]*GroupedMetric)
+	TranslateOtToGroupedMetric(metric, groupedMetricMap)
+	return TranslateBatchedMetricToEMF(groupedMetricMap), totalDroppedMetrics, namespace
 }
 
 func wrapErrorIfBadRequest(err *error) error {
