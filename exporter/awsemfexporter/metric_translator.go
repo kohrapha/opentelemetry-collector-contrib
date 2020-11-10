@@ -25,6 +25,7 @@ import (
 
 	"go.opentelemetry.io/collector/consumer/pdata"
 	"go.opentelemetry.io/collector/translator/conventions"
+	"go.uber.org/zap"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/exporter/awsemfexporter/mapwithexpiry"
 )
@@ -65,6 +66,13 @@ type GroupedMetric struct {
 	Timestamp    int64
 	Labels      map[string]interface{}
 	Metrics     map[string]MetricInfo
+}
+
+// CWMetrics defines
+type CWMetrics struct {
+	Measurements []CWMeasurement
+	Timestamp    int64
+	Fields       map[string]interface{}
 }
 
 // CWMeasurement defines
@@ -123,8 +131,9 @@ func (dps DoubleHistogramDataPointSlice) At(i int) DataPoint {
 	return dps.DoubleHistogramDataPointSlice.At(i)
 }
 
-func GetNamespaceFromMetric(rm *pdata.ResourceMetrics) (string) {
-	var namespace string
+
+// Validates namespace for given set of metrics from user config 
+func validateNamespace(rm *pdata.ResourceMetrics, namespace string) (string) {
 	if len(namespace) == 0 && !rm.Resource().IsNil() {
 		serviceName, svcNameOk := rm.Resource().Attributes().Get(conventions.AttributeServiceName)
 		serviceNamespace, svcNsOk := rm.Resource().Attributes().Get(conventions.AttributeServiceNamespace)
@@ -144,14 +153,18 @@ func GetNamespaceFromMetric(rm *pdata.ResourceMetrics) (string) {
 }
 
 // TranslateOtToGroupedMetric converts OT metrics to GroupedMetric format
-func TranslateOtToGroupedMetric(metric pdata.Metrics, groupedMetricMap map[string]*GroupedMetric) {
+func TranslateOtToGroupedMetric(metric pdata.Metrics, groupedMetricMap map[string]*GroupedMetric, config *Config) (int) {
 	totalDroppedMetrics := 0
 
 	var dps DataPoints
+	var instrumentationLibName string
 	rms := metric.ResourceMetrics()
 	for i := 0; i < rms.Len(); i++ {
 		rm := rms.At(i)
-		namespace := GetNamespaceFromMetric(&rm)
+		if rm.IsNil() {
+			continue
+		}
+		namespace := validateNamespace(&rm, config.Namespace)
 		ilms := rm.InstrumentationLibraryMetrics()
 		for j := 0; j < ilms.Len(); j++ {
 			ilm := ilms.At(j)
@@ -159,6 +172,12 @@ func TranslateOtToGroupedMetric(metric pdata.Metrics, groupedMetricMap map[strin
 				continue
 			}
 
+			if ilm.InstrumentationLibrary().IsNil() {
+				instrumentationLibName = noInstrumentationLibraryName
+			} else {
+				instrumentationLibName = ilm.InstrumentationLibrary().Name()
+			}
+			
 			metrics := ilm.Metrics()
 			for k := 0; k < metrics.Len(); k++ {
 				metric := metrics.At(k)
@@ -178,10 +197,16 @@ func TranslateOtToGroupedMetric(metric pdata.Metrics, groupedMetricMap map[strin
 						dps = DoubleDataPointSlice{metric.DoubleSum().DataPoints()}
 					case pdata.MetricDataTypeDoubleHistogram:
 						dps = DoubleHistogramDataPointSlice{metric.DoubleHistogram().DataPoints()}
+					default:
+						config.logger.Warn("Unhandled metric data type.",
+							zap.String("DataType", metric.DataType().String()),
+							zap.String("Name", metric.Name()),
+							zap.String("Unit", metric.Unit()),)
+						return totalDroppedMetrics
 				}
 
 				if dps.Len() == 0 {
-					return
+					continue
 				}
 
 				for m := 0; m < dps.Len(); m++ {
@@ -200,13 +225,14 @@ func TranslateOtToGroupedMetric(metric pdata.Metrics, groupedMetricMap map[strin
 					if _, ok := groupedMetricMap[key]; ok {
 						updateGroupedMetric(dp, &metric, key, groupedMetricMap)
 					} else {
-						groupedMetric := buildGroupedMetric(dp, &metric, namespace)
+						groupedMetric := buildGroupedMetric(dp, &metric, instrumentationLibName, namespace)
 						groupedMetricMap[key] = groupedMetric
 					}
 				}
 			}
 		}
 	}
+	return totalDroppedMetrics
 }
 
 // convert map of GroupedMetric objects into map format for compatible with PLE input
@@ -261,8 +287,34 @@ func TranslateBatchedMetricToEMF(groupedMetricMap map[string]*GroupedMetric) []*
 	return ples
 }
 
+func TranslateCWMetricToEMF(cwMetricLists []*CWMetrics) []*LogEvent {
+	// convert CWMetric into map format for compatible with PLE input
+	ples := make([]*LogEvent, 0, maximumLogEventsPerPut)
+	for _, met := range cwMetricLists {
+		cwmMap := make(map[string]interface{})
+		fieldMap := met.Fields
+		cwmMap["CloudWatchMetrics"] = met.Measurements
+		cwmMap["Timestamp"] = met.Timestamp
+		fieldMap["_aws"] = cwmMap
+
+		pleMsg, err := json.Marshal(fieldMap)
+		if err != nil {
+			continue
+		}
+		metricCreationTime := met.Timestamp
+
+		logEvent := NewLogEvent(
+			metricCreationTime,
+			string(pleMsg),
+		)
+		logEvent.LogGeneratedTime = time.Unix(0, metricCreationTime*int64(time.Millisecond))
+		ples = append(ples, logEvent)
+	}
+	return ples
+}
+
 // Build grouped metric from Datapoint and pdata.Metric
-func buildGroupedMetric (dp DataPoint, pMetricData *pdata.Metric, namespace string) *GroupedMetric {
+func buildGroupedMetric (dp DataPoint, pMetricData *pdata.Metric, instrumentationLibName string, namespace string) *GroupedMetric {
 	timestamp := time.Now().UnixNano() / int64(time.Millisecond)
 	labels := make(map[string]interface{})
 	metrics := make(map[string]MetricInfo)
@@ -413,13 +465,22 @@ func calculateRate(fields map[string]interface{}, val interface{}, timestamp int
 		prevStats := state.(*rateState)
 		deltaTime := timestamp - prevStats.timestamp
 		var deltaVal interface{}
+
 		if _, ok := val.(float64); ok {
-			deltaVal = val.(float64) - prevStats.value.(float64)
+			if _, ok := prevStats.value.(int64); ok {
+				deltaVal = val.(float64) - float64(prevStats.value.(int64))
+			} else {
+				deltaVal = val.(float64) - prevStats.value.(float64)
+			}
 			if deltaTime > MinTimeDiff.Milliseconds() && deltaVal.(float64) >= 0 {
 				metricRate = deltaVal.(float64) * 1e3 / float64(deltaTime)
 			}
 		} else {
-			deltaVal = val.(int64) - prevStats.value.(int64)
+			if _, ok := prevStats.value.(float64); ok {
+				deltaVal = val.(int64) - int64(prevStats.value.(float64))
+			} else {
+				deltaVal = val.(int64) - prevStats.value.(int64)
+			}
 			if deltaTime > MinTimeDiff.Milliseconds() && deltaVal.(int64) >= 0 {
 				metricRate = deltaVal.(int64) * 1e3 / deltaTime
 			}
