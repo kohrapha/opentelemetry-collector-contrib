@@ -64,7 +64,7 @@ type MetricInfo struct {
 type GroupedMetric struct {
 	Namespace    string
 	Timestamp    int64
-	Labels      map[string]interface{}
+	Labels      map[string]string
 	Metrics     map[string]MetricInfo
 }
 
@@ -153,9 +153,9 @@ func validateNamespace(rm *pdata.ResourceMetrics, namespace string) (string) {
 }
 
 // TranslateOtToGroupedMetric converts OT metrics to GroupedMetric format
-func TranslateOtToGroupedMetric(metric pdata.Metrics, groupedMetricMap map[string]*GroupedMetric, config *Config) (int) {
+func TranslateOtToGroupedMetric(metric pdata.Metrics, config *Config) (map[string]*GroupedMetric, int) {
 	totalDroppedMetrics := 0
-
+	groupedMetricMap := make(map[string]*GroupedMetric)
 	var dps DataPoints
 	var instrumentationLibName string
 	rms := metric.ResourceMetrics()
@@ -177,7 +177,7 @@ func TranslateOtToGroupedMetric(metric pdata.Metrics, groupedMetricMap map[strin
 			} else {
 				instrumentationLibName = ilm.InstrumentationLibrary().Name()
 			}
-			
+
 			metrics := ilm.Metrics()
 			for k := 0; k < metrics.Len(); k++ {
 				metric := metrics.At(k)
@@ -202,7 +202,7 @@ func TranslateOtToGroupedMetric(metric pdata.Metrics, groupedMetricMap map[strin
 							zap.String("DataType", metric.DataType().String()),
 							zap.String("Name", metric.Name()),
 							zap.String("Unit", metric.Unit()),)
-						return totalDroppedMetrics
+						continue
 				}
 
 				if dps.Len() == 0 {
@@ -216,8 +216,12 @@ func TranslateOtToGroupedMetric(metric pdata.Metrics, groupedMetricMap map[strin
 					}
 
 					labelSlice := make([]string, 0, dp.LabelsMap().Len())
+					labelSlice = append(labelSlice, namespace)
 					dp.LabelsMap().ForEach(func(k string, v string) {
-						labelSlice = append(labelSlice, k)
+						var str strings.Builder
+						str.WriteString(k)
+						str.WriteString(v)
+						labelSlice = append(labelSlice, str.String())
 					})
 					sort.Strings(labelSlice)
 					key := strings.Join(labelSlice, "")
@@ -225,14 +229,16 @@ func TranslateOtToGroupedMetric(metric pdata.Metrics, groupedMetricMap map[strin
 					if _, ok := groupedMetricMap[key]; ok {
 						updateGroupedMetric(dp, &metric, key, groupedMetricMap)
 					} else {
-						groupedMetric := buildGroupedMetric(dp, &metric, instrumentationLibName, namespace)
-						groupedMetricMap[key] = groupedMetric
+						groupedMetric := buildGroupedMetric(dp, namespace, &metric, instrumentationLibName, config.DimensionRollupOption)
+						if groupedMetric != nil {
+							groupedMetricMap[key] = groupedMetric
+						}
 					}
 				}
 			}
 		}
 	}
-	return totalDroppedMetrics
+	return groupedMetricMap, totalDroppedMetrics
 }
 
 // convert map of GroupedMetric objects into map format for compatible with PLE input
@@ -314,14 +320,13 @@ func TranslateCWMetricToEMF(cwMetricLists []*CWMetrics) []*LogEvent {
 }
 
 // Build grouped metric from Datapoint and pdata.Metric
-func buildGroupedMetric (dp DataPoint, pMetricData *pdata.Metric, instrumentationLibName string, namespace string) *GroupedMetric {
+func buildGroupedMetric (dp DataPoint, namespace string, pMetricData *pdata.Metric, instrumentationLibName string, dimensionRollupOption string) *GroupedMetric {
+	fields := createFields(dp, instrumentationLibName, dimensionRollupOption)
 	timestamp := time.Now().UnixNano() / int64(time.Millisecond)
-	labels := make(map[string]interface{})
+	labels := make(map[string]string)
 	metrics := make(map[string]MetricInfo)
 	// Extract labels
 	labelMap := dp.LabelsMap()
-	// v pdata.StringValue?
-	// v.Value()?
 	labelMap.ForEach(func(k string, v string) {
 		labels[k] = v
 	})
@@ -331,12 +336,12 @@ func buildGroupedMetric (dp DataPoint, pMetricData *pdata.Metric, instrumentatio
 	case pdata.IntDataPoint:
 		metricVal = int64(metric.Value())
 		if needsCalculateRate(pMetricData) {
-			metricVal = calculateRate(labels, metric.Value(), timestamp)
+			metricVal = calculateRate(fields, metric.Value(), timestamp)
 		}
 	case pdata.DoubleDataPoint:
 		metricVal = float64(metric.Value())
 		if needsCalculateRate(pMetricData) {
-			metricVal = calculateRate(labels, metric.Value(), timestamp)
+			metricVal = calculateRate(fields, metric.Value(), timestamp)
 		}
 	case pdata.DoubleHistogramDataPoint:
 		bucketBounds := metric.ExplicitBounds()
@@ -401,6 +406,21 @@ func updateGroupedMetric (dp DataPoint, pMetricData *pdata.Metric, key string, g
 	groupedMetricMap[key].Timestamp = timestamp
 }
 
+// Create and initialize fields from DataPoint labels
+func createFields(dp DataPoint, instrumentationLibName string, dimensionRollupOption string) (fields map[string]interface{}) {
+	// fields contains metric and dimensions key/value pairs
+	fields = make(map[string]interface{})
+	dimensionKV := dp.LabelsMap()
+
+	dimensionKV.ForEach(func(k string, v string) {
+		fields[k] = v
+	})
+	if instrumentationLibName != noInstrumentationLibraryName {
+		fields[OTellibDimensionKey] = instrumentationLibName
+	} 
+	return
+}
+
 // Create dimensions from DataPoint labels, where dimensions is a 2D array of dimension names,
 // and initialize fields with dimension key/value pairs
 func createDimensions(dp DataPoint, instrumentationLibName string, dimensionRollupOption string) (dimensions [][]string, fields map[string]interface{}) {
@@ -438,7 +458,7 @@ func calculateRate(fields map[string]interface{}, val interface{}, timestamp int
 	var b bytes.Buffer
 	var metricRate interface{}
 	// hash the key of str: metric + dimension key/value pairs (sorted alpha)
-	for k := range fields {
+	for k, _ := range fields {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)

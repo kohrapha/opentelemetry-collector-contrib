@@ -64,7 +64,8 @@ func TestTranslateOtToGroupedMetric(t *testing.T) {
 	}
 	md := createMetricTestData()
 	rm := internaldata.OCToMetrics(md)
-	totalDroppedMetrics := TranslateOtToGroupedMetric(rm, groupedMetricMap, config)
+	totalDroppedMetrics := 0
+	groupedMetricMap, totalDroppedMetrics = TranslateOtToGroupedMetric(rm, config)
 
 	assert.Equal(t, 1, totalDroppedMetrics)
 	assert.NotNil(t, groupedMetricMap)
@@ -112,7 +113,8 @@ func TestTranslateOtToGroupedMetricWithNameSpace(t *testing.T) {
 		Metrics: []*metricspb.Metric{},
 	}
 	rm := internaldata.OCToMetrics(md)
-	totalDroppedMetrics := TranslateOtToGroupedMetric(rm, groupedMetricMap, config)
+	totalDroppedMetrics := 0
+	groupedMetricMap, totalDroppedMetrics = TranslateOtToGroupedMetric(rm, config)
 	
 	assert.Equal(t, 0, totalDroppedMetrics)
 	assert.Equal(t, 0, len(groupedMetricMap))
@@ -161,7 +163,7 @@ func TestTranslateOtToGroupedMetricWithNameSpace(t *testing.T) {
 	}
 
 	rm = internaldata.OCToMetrics(md)
-	totalDroppedMetrics = TranslateOtToGroupedMetric(rm, groupedMetricMap, config)
+	groupedMetricMap, totalDroppedMetrics = TranslateOtToGroupedMetric(rm, config)
 	metricsMap = groupedMetricMap["isItAnErrorspanName"].Metrics
 
 	assert.Equal(t, 0, totalDroppedMetrics)
@@ -457,9 +459,10 @@ func TestTranslateOtToGroupedMetricWithAllDataTypes(t *testing.T) {
 			assert.Equal(t, 1, ilms.Len())
 			metrics := ilms.At(0).Metrics()
 			assert.Equal(t, 1, metrics.Len())
-
-			TranslateOtToGroupedMetric(rm, groupedMetricMap, config)
+			totalDroppedMetrics := 0
+			groupedMetricMap, totalDroppedMetrics = TranslateOtToGroupedMetric(rm, config)
 			assert.Equal(t, len(tc.expected), len(groupedMetricMap["label1"].Metrics))
+			assert.Equal(t, 0, totalDroppedMetrics)
 
 			for i, expected := range tc.expected {
 				metrics := groupedMetricMap["label1"].Metrics
@@ -489,10 +492,12 @@ func TestTranslateOtToGroupedMetricWithAllDataTypes(t *testing.T) {
 			DimensionRollupOption: "",
 			logger:                zap.New(obs),
 		}
-
-		TranslateOtToGroupedMetric(md, groupedMetricMap, obsConfig)
+		totalDroppedMetrics := 0
+		groupedMetricMap, totalDroppedMetrics = TranslateOtToGroupedMetric(md, obsConfig)
+		
 		assert.Equal(t, 0, len(groupedMetricMap))
-
+		assert.Equal(t, 0, totalDroppedMetrics)
+		
 		// Test output warning logs
 		expectedLogs := []observer.LoggedEntry{
 			{
@@ -525,7 +530,7 @@ func TestBuildGroupedMetric(t *testing.T) {
 		})
 		dp.SetValue(int64(-17))
 
-		groupedMetric := buildGroupedMetric(dp, &metric, instrLibName, namespace)
+		groupedMetric := buildGroupedMetric(dp, namespace, &metric, instrLibName, "")
 
 		assert.NotNil(t, groupedMetric)
 		assert.Equal(t, 1, len(groupedMetric.Labels))
@@ -534,7 +539,7 @@ func TestBuildGroupedMetric(t *testing.T) {
 			"foo": MetricInfo {int64(-17), ""},
 		}
 		assert.Equal(t, expectedMetrics, groupedMetric.Metrics)
-		expectedLabels := map[string]interface{}{
+		expectedLabels := map[string]string{
 			"label1": "value1",
 		}
 		assert.Equal(t, expectedLabels, groupedMetric.Labels)
@@ -549,7 +554,7 @@ func TestBuildGroupedMetric(t *testing.T) {
 		})
 		dp.SetValue(0.3)
 
-		groupedMetric := buildGroupedMetric(dp, &metric, instrLibName, namespace)
+		groupedMetric := buildGroupedMetric(dp, namespace, &metric, instrLibName, "")
 
 		assert.NotNil(t, groupedMetric)
 		assert.Equal(t, 1, len(groupedMetric.Labels))
@@ -558,7 +563,7 @@ func TestBuildGroupedMetric(t *testing.T) {
 			"foo": MetricInfo {0.3, ""},
 		}
 		assert.Equal(t, expectedMetrics, groupedMetric.Metrics)
-		expectedLabels := map[string]interface{}{
+		expectedLabels := map[string]string{
 			"label1": "value1",
 		}
 		assert.Equal(t, expectedLabels, groupedMetric.Labels)
@@ -575,7 +580,7 @@ func TestBuildGroupedMetric(t *testing.T) {
 		})
 		dp.SetValue(int64(-9))
 
-		groupedMetric := buildGroupedMetric(dp, &metric, instrLibName, namespace)
+		groupedMetric := buildGroupedMetric(dp, namespace, &metric, instrLibName, "")
 
 		assert.NotNil(t, groupedMetric)
 		assert.Equal(t, 1, len(groupedMetric.Labels))
@@ -584,7 +589,7 @@ func TestBuildGroupedMetric(t *testing.T) {
 			"foo": MetricInfo {0, ""},
 		}
 		assert.Equal(t, expectedMetrics, groupedMetric.Metrics)
-		expectedLabels := map[string]interface{}{
+		expectedLabels := map[string]string{
 			"label1": "value1",
 		}
 		assert.Equal(t, expectedLabels, groupedMetric.Labels)
@@ -601,7 +606,7 @@ func TestBuildGroupedMetric(t *testing.T) {
 		})
 		dp.SetValue(0.3)
 
-		groupedMetric := buildGroupedMetric(dp, &metric, instrLibName, namespace)
+		groupedMetric := buildGroupedMetric(dp, namespace, &metric, instrLibName, "")
 
 		assert.NotNil(t, groupedMetric)
 		assert.Equal(t, 1, len(groupedMetric.Labels))
@@ -610,7 +615,7 @@ func TestBuildGroupedMetric(t *testing.T) {
 			"foo": MetricInfo {0, ""},
 		}
 		assert.Equal(t, expectedMetrics, groupedMetric.Metrics)
-		expectedLabels := map[string]interface{}{
+		expectedLabels := map[string]string{
 			"label1": "value1",
 		}
 		assert.Equal(t, expectedLabels, groupedMetric.Labels)
@@ -628,7 +633,7 @@ func TestBuildGroupedMetric(t *testing.T) {
 		dp.SetBucketCounts([]uint64{1, 2, 3})
 		dp.SetExplicitBounds([]float64{1, 2, 3})
 
-		groupedMetric := buildGroupedMetric(dp, &metric, instrLibName, namespace)
+		groupedMetric := buildGroupedMetric(dp, namespace, &metric, instrLibName, "")
 
 		assert.NotNil(t, groupedMetric)
 		assert.Equal(t, 1, len(groupedMetric.Labels))
@@ -642,7 +647,7 @@ func TestBuildGroupedMetric(t *testing.T) {
 			}, ""},
 		}
 		assert.Equal(t, expectedMetrics, groupedMetric.Metrics)
-		expectedLabels := map[string]interface{}{
+		expectedLabels := map[string]string{
 			"label1": "value1",
 		}
 		assert.Equal(t, expectedLabels, groupedMetric.Labels)
@@ -653,7 +658,7 @@ func TestBuildGroupedMetric(t *testing.T) {
 		dp := pdata.NewIntHistogramDataPoint()
 		dp.InitEmpty()
 
-		groupedMetric := buildGroupedMetric(dp, &metric, instrLibName, namespace)
+		groupedMetric := buildGroupedMetric(dp, namespace, &metric, instrLibName, "")
 		assert.Nil(t, groupedMetric)
 	})
 }
