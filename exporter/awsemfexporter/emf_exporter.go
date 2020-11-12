@@ -173,9 +173,9 @@ func (emf *emfExporter) Start(ctx context.Context, host component.Host) error {
 
 func generateLogEventFromMetric(metric pdata.Metrics, config *Config) ([]*LogEvent, int, string) {
 	var totalDroppedMetrics int
-	groupedMetricMap := make(map[string]*GroupedMetric)
-	totalDroppedMetrics = TranslateOtToGroupedMetric(metric, groupedMetricMap, config)
 	namespace := config.Namespace
+	groupedMetricMap := make(map[string]*GroupedMetric)
+	groupedMetricMap, totalDroppedMetrics = TranslateOtToGroupedMetric(metric, config)
 	return TranslateBatchedMetricToEMF(groupedMetricMap), totalDroppedMetrics, namespace
 }
 

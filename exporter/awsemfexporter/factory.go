@@ -53,7 +53,6 @@ func createDefaultConfig() configmodels.Exporter {
 		Region:                "",
 		RoleARN:               "",
 		DimensionRollupOption: "ZeroAndSingleDimensionRollup",
-		MetricDeclarations:    make([]*MetricDeclaration, 0),
 		logger:                nil,
 	}
 }
@@ -65,5 +64,5 @@ func createMetricsExporter(_ context.Context,
 
 	expCfg := config.(*Config)
 
-	return NewEmfExporter(expCfg, params)
+	return New(expCfg, params)
 }
