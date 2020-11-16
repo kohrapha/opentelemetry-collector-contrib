@@ -38,6 +38,7 @@ const (
 	OTellibDimensionKey          = "OTelLib"
 	defaultNameSpace             = "default"
 	noInstrumentationLibraryName = "Undefined"
+	nameSpace                    = "Namespace"
 
 	// See: http://docs.aws.amazon.com/AmazonCloudWatchLogs/latest/APIReference/API_PutLogEvents.html
 	maximumLogEventsPerPut = 10000
@@ -215,19 +216,22 @@ func TranslateOtToGroupedMetric(metric pdata.Metrics, config *Config) (map[strin
 						continue
 					}
 
-					fields := make([]string, 0, dp.LabelsMap().Len()+4)
-					fields = append(fields, "Namespace", namespace, "OTellibDimensionKey", instrumentationLibName)
-					
+					fields := make(map[string]interface{})
+					fields[nameSpace] = namespace
+					fields[OTellibDimensionKey] = instrumentationLibName
+	
 					dp.LabelsMap().ForEach(func(k string, v string) {
-						fields = append(fields, k, v)
+						fields[k] = v
 					})
-
-					if fields[3] == noInstrumentationLibraryName {
-							fields[3] = ""
-						}
 					
-					s := make([]string, len(fields))
-					copy(s, fields)
+					s := make([]string, len(fields)*2)
+					for k, v := range fields {
+						if (k != OTellibDimensionKey) {
+							s = append(s, k, v.(string))
+						} else {
+							s = append(s, k, v.(string))
+						}
+					}
 					sort.Strings(s)
 					key := strings.Join(s, "")
 
@@ -247,23 +251,18 @@ func TranslateOtToGroupedMetric(metric pdata.Metrics, config *Config) (map[strin
 }
 
 // Build grouped metric from Datapoint and pdata.Metric
-func buildGroupedMetric (dp DataPoint, fields []string, pMetricData *pdata.Metric, dimensionRollupOption string) (*GroupedMetric) {
+func buildGroupedMetric (dp DataPoint, fields map[string]interface{}, pMetricData *pdata.Metric, dimensionRollupOption string) (*GroupedMetric) {
 	var namespace string
-	var instrumentationLibName string
 	timestamp := time.Now().UnixNano() / int64(time.Millisecond)
 	labels := make(map[string]string)
 	metrics := make(map[string]MetricInfo)
 	
-	namespace = fields[1]
-	instrumentationLibName = fields[3]
+	namespace = fields[nameSpace].(string)
 
-	if (instrumentationLibName != noInstrumentationLibraryName) {
-		labels[OTellibDimensionKey] = instrumentationLibName
-	}
 	// Extract labels
-	for i := 0; i < len(fields); i+=2 {
-		if i > 2 {
-			labels[fields[i]] = fields[i+1]
+	for k, v := range fields {
+		if k != nameSpace {
+			labels[k] = v.(string)
 		}
 	}
 
@@ -375,15 +374,26 @@ func createDimensions(dp DataPoint, instrumentationLibName string, dimensionRoll
 }
 
 // rate is calculated by valDelta / timeDelta
-func calculateRate(fields []string, val interface{}, timestamp int64) interface{} {
+func calculateRate(fields map[string]interface{}, val interface{}, timestamp int64) interface{} {
+	keys := make([]string, 0, len(fields))
 	var b bytes.Buffer
 	var metricRate interface{}
 	// hash the key of str: metric + dimension key/value pairs (sorted alpha)
-	sort.Strings(fields)
-	for i := 0; i < len(fields); i+=2 {
-		if i != 0 {
-			b.WriteString(fields[i])
-			b.WriteString(fields[i+1])
+	for k := range fields {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	for _, k := range keys {
+		switch v := fields[k].(type) {
+		case int64:
+			b.WriteString(k)
+			continue
+		case string:
+			b.WriteString(k)
+			b.WriteString(v)
+		default:
+			continue
 		}
 	}
 	

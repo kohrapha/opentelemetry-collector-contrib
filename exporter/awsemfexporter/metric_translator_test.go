@@ -70,21 +70,21 @@ func TestTranslateOtToGroupedMetric(t *testing.T) {
 	assert.Equal(t, 1, totalDroppedMetrics)
 	assert.NotNil(t, groupedMetricMap)
 
-	metricsMap = groupedMetricMap["NamespaceOTellibDimensionKeyfalseisItAnErrormyServiceNS/myServiceNamespanNametestSpan"].Metrics
+	metricsMap = groupedMetricMap["NamespaceOTelLibUndefinedfalseisItAnErrormyServiceNS/myServiceNamespanNametestSpan"].Metrics
 	assert.Equal(t, 4, len(metricsMap))
-	metricsMap = groupedMetricMap["NamespaceOTellibDimensionKeymyServiceNS/myServiceNamespanNametestSpan"].Metrics
+	metricsMap = groupedMetricMap["NamespaceOTelLibUndefinedmyServiceNS/myServiceNamespanNametestSpan"].Metrics
 	assert.Equal(t, 1, len(metricsMap))
 
 	var labels []string
-	for i, _ := range groupedMetricMap["NamespaceOTellibDimensionKeyfalseisItAnErrormyServiceNS/myServiceNamespanNametestSpan"].Labels {
+	for i, _ := range groupedMetricMap["NamespaceOTelLibUndefinedmyServiceNS/myServiceNamespanNametestSpan"].Labels {
 		labels = append(labels, i)
 	}
 	sort.Strings(labels)
-	assert.Equal(t, []string{"OTelLib", "isItAnError", "spanName"}, labels)
+	assert.Equal(t, []string{"OTelLib", "spanName"}, labels)
 	
 	labels = nil
 	
-	for i, _ := range groupedMetricMap["NamespaceOTellibDimensionKeymyServiceNS/myServiceNamespanNametestSpan"].Labels {
+	for i, _ := range groupedMetricMap["NamespaceOTelLibUndefinedmyServiceNS/myServiceNamespanNametestSpan"].Labels {
 		labels = append(labels, i)
 	}
 	sort.Strings(labels)
@@ -161,12 +161,12 @@ func TestTranslateOtToGroupedMetricWithNameSpace(t *testing.T) {
 
 	rm = internaldata.OCToMetrics(md)
 	groupedMetricMap, totalDroppedMetrics = TranslateOtToGroupedMetric(rm, config)
-	metricsMap = groupedMetricMap["NamespaceOTellibDimensionKeyfalseisItAnErrormyServiceNSspanNametestSpan"].Metrics
+	metricsMap = groupedMetricMap["NamespaceOTelLibUndefinedfalseisItAnErrormyServiceNSspanNametestSpan"].Metrics
 
 	assert.Equal(t, 0, totalDroppedMetrics)
 	assert.NotNil(t, groupedMetricMap)
 	assert.Equal(t, 1, len(metricsMap))
-	assert.Equal(t, "myServiceNS", groupedMetricMap["NamespaceOTellibDimensionKeyfalseisItAnErrormyServiceNSspanNametestSpan"].Namespace)
+	assert.Equal(t, "myServiceNS", groupedMetricMap["NamespaceOTelLibUndefinedfalseisItAnErrormyServiceNSspanNametestSpan"].Namespace)
 }
 
 func TestTranslateCWMetricToEMF(t *testing.T) {
@@ -456,9 +456,11 @@ func TestTranslateOtToGroupedMetricWithAllDataTypes(t *testing.T) {
 			assert.Equal(t, 1, ilms.Len())
 			metrics := ilms.At(0).Metrics()
 			assert.Equal(t, 1, metrics.Len())
+			
 			totalDroppedMetrics := 0
 			groupedMetricMap, totalDroppedMetrics = TranslateOtToGroupedMetric(rm, config)
-			key := "NamespaceOTellibDimensionKeylabel1myServiceNS/myServiceNamevalue1"
+			key := "NamespaceOTelLibUndefinedlabel1myServiceNS/myServiceNamevalue1"
+			
 			assert.Equal(t, len(tc.expected), len(groupedMetricMap[key].Metrics))
 			assert.Equal(t, 0, totalDroppedMetrics)
 
@@ -515,6 +517,7 @@ func TestTranslateOtToGroupedMetricWithAllDataTypes(t *testing.T) {
 func TestBuildGroupedMetric(t *testing.T) {
 	namespace := "Namespace"
 	instrLibName := "InstrLibName"
+	OTellibDimensionKey := "OTelLib"
 	metric := pdata.NewMetric()
 	metric.InitEmpty()
 	metric.SetName("foo")
@@ -528,7 +531,12 @@ func TestBuildGroupedMetric(t *testing.T) {
 		})
 		dp.SetValue(int64(-17))
 
-		fields := []string{"", namespace, "", instrLibName, "label1", "value1"}
+		fields := map[string]interface{}{
+			"Namespace": namespace,
+			OTellibDimensionKey: instrLibName,
+			"label1": "value1",
+		}
+
 		groupedMetric := buildGroupedMetric(dp, fields, &metric, "")
 
 		assert.NotNil(t, groupedMetric)
@@ -554,7 +562,12 @@ func TestBuildGroupedMetric(t *testing.T) {
 		})
 		dp.SetValue(0.3)
 
-		fields := []string{"", namespace, "", instrLibName, "label1", "value1"}
+		fields := map[string]interface{}{
+			"Namespace": namespace,
+			OTellibDimensionKey: instrLibName,
+			"label1": "value1",
+		}
+
 		groupedMetric := buildGroupedMetric(dp, fields, &metric, "")
 
 		assert.NotNil(t, groupedMetric)
@@ -582,7 +595,12 @@ func TestBuildGroupedMetric(t *testing.T) {
 		})
 		dp.SetValue(int64(-9))
 
-		fields := []string{"", namespace, "", instrLibName, "label1", "value1"}
+		fields := map[string]interface{}{
+			"Namespace": namespace,
+			OTellibDimensionKey: instrLibName,
+			"label1": "value1",
+		}
+
 		groupedMetric := buildGroupedMetric(dp, fields, &metric, "")
 
 		assert.NotNil(t, groupedMetric)
@@ -610,7 +628,12 @@ func TestBuildGroupedMetric(t *testing.T) {
 		})
 		dp.SetValue(0.3)
 
-		fields := []string{"", namespace, "", instrLibName, "label1", "value1"}
+		fields := map[string]interface{}{
+			"Namespace": namespace,
+			OTellibDimensionKey: instrLibName,
+			"label1": "value1",
+		}
+
 		groupedMetric := buildGroupedMetric(dp, fields, &metric, "")
 
 		assert.NotNil(t, groupedMetric)
@@ -639,7 +662,12 @@ func TestBuildGroupedMetric(t *testing.T) {
 		dp.SetBucketCounts([]uint64{1, 2, 3})
 		dp.SetExplicitBounds([]float64{1, 2, 3})
 
-		fields := []string{"", namespace, "", instrLibName, "label1", "value1"}
+		fields := map[string]interface{}{
+			"Namespace": namespace,
+			OTellibDimensionKey: instrLibName,
+			"label1": "value1",
+		}
+
 		groupedMetric := buildGroupedMetric(dp, fields, &metric, "")
 
 		assert.NotNil(t, groupedMetric)
@@ -666,7 +694,12 @@ func TestBuildGroupedMetric(t *testing.T) {
 		dp := pdata.NewIntHistogramDataPoint()
 		dp.InitEmpty()
 
-		fields := []string{"", namespace, "", instrLibName, "label1", "value1"}
+		fields := map[string]interface{}{
+			"Namespace": namespace,
+			OTellibDimensionKey: instrLibName,
+			"label1": "value1",
+		}
+
 		groupedMetric := buildGroupedMetric(dp, fields, &metric, "")
 		assert.Nil(t, groupedMetric)
 	})
@@ -728,9 +761,17 @@ func TestCreateDimensions(t *testing.T) {
 }
 
 func TestCalculateRate(t *testing.T) {
+	namespace := "Namespace"
+	instrLibName := "InstrLibName"
 	prevValue := int64(0)
 	curValue := int64(10)
-	fields := []string {"", "Namespace", "OTelLib", "cloudwatch-otel", "spanName", "test", "spanCounter", "", "type", "Int64"}
+	fields := map[string]interface{}{
+		"Namespace": namespace,
+		"OTelLib": instrLibName,
+		"spanName": "test",
+		"spanCounter": 0,
+		"type": "Int64",
+	}
 	prevTime := time.Now().UnixNano() / int64(time.Millisecond)
 	curTime := time.Unix(0, prevTime*int64(time.Millisecond)).Add(time.Second*10).UnixNano() / int64(time.Millisecond)
 	rate := calculateRate(fields, prevValue, prevTime)
@@ -740,7 +781,7 @@ func TestCalculateRate(t *testing.T) {
 
 	prevDoubleValue := 0.0
 	curDoubleValue := 5.0
-	fields = append(fields, "type", "Float64")
+	fields["type"] = "Float64"
 	rate = calculateRate(fields, prevDoubleValue, prevTime)
 	assert.Equal(t, 0, rate)
 	rate = calculateRate(fields, curDoubleValue, curTime)
