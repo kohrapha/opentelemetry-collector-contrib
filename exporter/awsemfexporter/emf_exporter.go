@@ -172,11 +172,26 @@ func (emf *emfExporter) Start(ctx context.Context, host component.Host) error {
 }
 
 func generateLogEventFromMetric(metric pdata.Metrics, config *Config) ([]*LogEvent, int, string) {
-	var totalDroppedMetrics int
 	namespace := config.Namespace
-	groupedMetricMap := make(map[string]*GroupedMetric)
-	groupedMetricMap, totalDroppedMetrics = TranslateOtToGroupedMetric(metric, config)
-	return TranslateBatchedMetricToEMF(groupedMetricMap), totalDroppedMetrics, namespace
+	rms := metric.ResourceMetrics()
+	cwMetricLists := []*CWMetrics{}
+	var cwm []*CWMetrics
+	var totalDroppedMetrics int
+
+	for i := 0; i < rms.Len(); i++ {
+		rm := rms.At(i)
+		if rm.IsNil() {
+			continue
+		}
+		cwm, totalDroppedMetrics = TranslateOtToCWMetric(&rm, config)
+		if len(cwm) > 0 && len(cwm[0].Measurements) > 0 {
+			namespace = cwm[0].Measurements[0].Namespace
+		}
+		// append all datapoint metrics in the request into CWMetric list
+		cwMetricLists = append(cwMetricLists, cwm...)
+	}
+
+	return TranslateCWMetricToEMF(cwMetricLists, config.logger), totalDroppedMetrics, namespace
 }
 
 func wrapErrorIfBadRequest(err *error) error {
