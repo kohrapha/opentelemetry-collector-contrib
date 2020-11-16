@@ -302,6 +302,631 @@ func assertCwMeasurementEqual(t *testing.T, expected, actual CwMeasurement) {
 	assertDimsEqual(t, expected.Dimensions, actual.Dimensions)
 }
 
+func TestTranslateOtToGroupedMetric(t *testing.T) {
+	metricsMap := make(map[string]MetricInfo)
+	groupedMetricMap := make(map[string]*GroupedMetric)
+	config := &Config{
+		Namespace:             "",
+		DimensionRollupOption: ZeroAndSingleDimensionRollup,
+	}
+	md := createMetricTestData()
+	rm := internaldata.OCToMetrics(md)
+	totalDroppedMetrics := 0
+	groupedMetricMap, totalDroppedMetrics = TranslateOtToGroupedMetric(rm, config)
+
+	assert.Equal(t, 1, totalDroppedMetrics)
+	assert.NotNil(t, groupedMetricMap)
+
+	metricsMap = groupedMetricMap["NamespaceOTelLibUndefinedfalseisItAnErrormyServiceNS/myServiceNamespanNametestSpan"].Metrics
+	assert.Equal(t, 4, len(metricsMap))
+	metricsMap = groupedMetricMap["NamespaceOTelLibUndefinedmyServiceNS/myServiceNamespanNametestSpan"].Metrics
+	assert.Equal(t, 1, len(metricsMap))
+
+	var labels []string
+	for i, _ := range groupedMetricMap["NamespaceOTelLibUndefinedmyServiceNS/myServiceNamespanNametestSpan"].Labels {
+		labels = append(labels, i)
+	}
+	sort.Strings(labels)
+	assert.Equal(t, []string{"OTelLib", "spanName"}, labels)
+	
+	labels = nil
+	
+	for i, _ := range groupedMetricMap["NamespaceOTelLibUndefinedmyServiceNS/myServiceNamespanNametestSpan"].Labels {
+		labels = append(labels, i)
+	}
+	sort.Strings(labels)
+	assert.Equal(t, []string{"OTelLib", "spanName"}, labels)
+}
+
+func TestTranslateOtToGroupedMetricWithNameSpace(t *testing.T) {
+	metricsMap := make(map[string]MetricInfo)
+	groupedMetricMap := make(map[string]*GroupedMetric)
+	config := &Config{
+		Namespace:             "",
+		DimensionRollupOption: ZeroAndSingleDimensionRollup,
+	}
+	md := consumerdata.MetricsData{
+		Node: &commonpb.Node{
+			LibraryInfo: &commonpb.LibraryInfo{ExporterVersion: "SomeVersion"},
+		},
+		Resource: &resourcepb.Resource{
+			Labels: map[string]string{
+				conventions.AttributeServiceName: "myServiceName",
+			},
+		},
+		Metrics: []*metricspb.Metric{},
+	}
+	rm := internaldata.OCToMetrics(md)
+	totalDroppedMetrics := 0
+	groupedMetricMap, totalDroppedMetrics = TranslateOtToGroupedMetric(rm, config)
+	
+	assert.Equal(t, 0, totalDroppedMetrics)
+	assert.Equal(t, 0, len(groupedMetricMap))
+	
+	md = consumerdata.MetricsData{
+		Node: &commonpb.Node{
+			LibraryInfo: &commonpb.LibraryInfo{ExporterVersion: "SomeVersion"},
+		},
+		Resource: &resourcepb.Resource{
+			Labels: map[string]string{
+				conventions.AttributeServiceNamespace: "myServiceNS",
+			},
+		},
+		Metrics: []*metricspb.Metric{
+			{
+				MetricDescriptor: &metricspb.MetricDescriptor{
+					Name:        "spanCounter",
+					Description: "Counting all the spans",
+					Unit:        "Count",
+					Type:        metricspb.MetricDescriptor_CUMULATIVE_INT64,
+					LabelKeys: []*metricspb.LabelKey{
+						{Key: "spanName"},
+						{Key: "isItAnError"},
+					},
+				},
+				Timeseries: []*metricspb.TimeSeries{
+					{
+						LabelValues: []*metricspb.LabelValue{
+							{Value: "testSpan", HasValue: true},
+							{Value: "false", HasValue: true},
+						},
+						Points: []*metricspb.Point{
+							{
+								Timestamp: &timestamp.Timestamp{
+									Seconds: 100,
+								},
+								Value: &metricspb.Point_Int64Value{
+									Int64Value: 1,
+								},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	rm = internaldata.OCToMetrics(md)
+	groupedMetricMap, totalDroppedMetrics = TranslateOtToGroupedMetric(rm, config)
+	metricsMap = groupedMetricMap["NamespaceOTelLibUndefinedfalseisItAnErrormyServiceNSspanNametestSpan"].Metrics
+
+	assert.Equal(t, 0, totalDroppedMetrics)
+	assert.NotNil(t, groupedMetricMap)
+	assert.Equal(t, 1, len(metricsMap))
+	assert.Equal(t, "myServiceNS", groupedMetricMap["NamespaceOTelLibUndefinedfalseisItAnErrormyServiceNSspanNametestSpan"].Namespace)
+}
+
+func TestTranslateOtToGroupedMetricWithAllDataTypes(t *testing.T) {
+	config := &Config{
+		DimensionRollupOption: "",
+	}
+
+	testCases := []struct {
+		testName string
+		metric   *metricspb.Metric
+		expected map[string]MetricInfo
+	}{
+		{
+			"Int gauge",
+			&metricspb.Metric{
+				MetricDescriptor: &metricspb.MetricDescriptor{
+					Name: "foo",
+					Type: metricspb.MetricDescriptor_GAUGE_INT64,
+					Unit: "Count",
+					LabelKeys: []*metricspb.LabelKey{
+						{Key: "label1"},
+					},
+				},
+				Timeseries: []*metricspb.TimeSeries{
+					{
+						LabelValues: []*metricspb.LabelValue{
+							{Value: "value1", HasValue: true},
+						},
+						Points: []*metricspb.Point{
+							{
+								Value: &metricspb.Point_Int64Value{
+									Int64Value: 1,
+								},
+							},
+						},
+					},
+				},
+			},
+			map[string]MetricInfo {
+				"foo": MetricInfo{
+					Value: int64(1),
+					Unit: "Count",
+				},
+			},
+		},
+		{
+			"Double gauge",
+			&metricspb.Metric{
+				MetricDescriptor: &metricspb.MetricDescriptor{
+					Name: "foo",
+					Type: metricspb.MetricDescriptor_GAUGE_DOUBLE,
+					Unit: "Count",
+					LabelKeys: []*metricspb.LabelKey{
+						{Key: "label1"},
+					},
+				},
+				Timeseries: []*metricspb.TimeSeries{
+					{
+						LabelValues: []*metricspb.LabelValue{
+							{Value: "value1", HasValue: true},
+						},
+						Points: []*metricspb.Point{
+							{
+								Value: &metricspb.Point_DoubleValue{
+									DoubleValue: 0.1,
+								},
+							},
+						},
+					},
+				},
+			},
+			map[string]MetricInfo {
+				"foo": MetricInfo{
+					Value: 0.1,
+					Unit: "Count",
+				},
+			},
+		},
+		{
+			"Int sum",
+			&metricspb.Metric{
+				MetricDescriptor: &metricspb.MetricDescriptor{
+					Name: "foo",
+					Type: metricspb.MetricDescriptor_CUMULATIVE_INT64,
+					Unit: "Count",
+					LabelKeys: []*metricspb.LabelKey{
+						{Key: "label1"},
+					},
+				},
+				Timeseries: []*metricspb.TimeSeries{
+					{
+						LabelValues: []*metricspb.LabelValue{
+							{Value: "value1", HasValue: true},
+							{Value: "value2", HasValue: true},
+						},
+						Points: []*metricspb.Point{
+							{
+								Value: &metricspb.Point_Int64Value{
+									Int64Value: 1,
+								},
+							},
+						},
+					},
+				},
+			},
+			map[string]MetricInfo {
+				"foo": MetricInfo{
+					Value: 0,
+					Unit: "Count",
+				},
+			},
+		},
+		{
+			"Double sum",
+			&metricspb.Metric{
+				MetricDescriptor: &metricspb.MetricDescriptor{
+					Name: "foo",
+					Type: metricspb.MetricDescriptor_CUMULATIVE_DOUBLE,
+					Unit: "Count",
+					LabelKeys: []*metricspb.LabelKey{
+						{Key: "label1"},
+					},
+				},
+				Timeseries: []*metricspb.TimeSeries{
+					{
+						LabelValues: []*metricspb.LabelValue{
+							{Value: "value1", HasValue: true},
+							{Value: "value2", HasValue: true},
+						},
+						Points: []*metricspb.Point{
+							{
+								Value: &metricspb.Point_DoubleValue{
+									DoubleValue: 0.1,
+								},
+							},
+						},
+					},
+				},
+			},
+			map[string]MetricInfo {
+				"foo": MetricInfo{
+					Value: 0,
+					Unit: "Count",
+				},
+			},
+		},
+		{
+			"Double histogram",
+			&metricspb.Metric{
+				MetricDescriptor: &metricspb.MetricDescriptor{
+					Name: "foo",
+					Type: metricspb.MetricDescriptor_CUMULATIVE_DISTRIBUTION,
+					Unit: "Seconds",
+					LabelKeys: []*metricspb.LabelKey{
+						{Key: "label1"},
+					},
+				},
+				Timeseries: []*metricspb.TimeSeries{
+					{
+						LabelValues: []*metricspb.LabelValue{
+							{Value: "value1", HasValue: true},
+							{Value: "value2", HasValue: true},
+						},
+						Points: []*metricspb.Point{
+							{
+								Value: &metricspb.Point_DistributionValue{
+									DistributionValue: &metricspb.DistributionValue{
+										Sum:   15.0,
+										Count: 5,
+										BucketOptions: &metricspb.DistributionValue_BucketOptions{
+											Type: &metricspb.DistributionValue_BucketOptions_Explicit_{
+												Explicit: &metricspb.DistributionValue_BucketOptions_Explicit{
+													Bounds: []float64{0, 10},
+												},
+											},
+										},
+										Buckets: []*metricspb.DistributionValue_Bucket{
+											{
+												Count: 0,
+											},
+											{
+												Count: 4,
+											},
+											{
+												Count: 1,
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+					{
+						LabelValues: []*metricspb.LabelValue{
+							{HasValue: false},
+							{Value: "value2", HasValue: true},
+						},
+						Points: []*metricspb.Point{
+							{
+								Value: &metricspb.Point_DistributionValue{
+									DistributionValue: &metricspb.DistributionValue{
+										Sum:   35.0,
+										Count: 18,
+										BucketOptions: &metricspb.DistributionValue_BucketOptions{
+											Type: &metricspb.DistributionValue_BucketOptions_Explicit_{
+												Explicit: &metricspb.DistributionValue_BucketOptions_Explicit{
+													Bounds: []float64{0, 10},
+												},
+											},
+										},
+										Buckets: []*metricspb.DistributionValue_Bucket{
+											{
+												Count: 5,
+											},
+											{
+												Count: 6,
+											},
+											{
+												Count: 7,
+											},
+										},
+									},
+								},
+							},
+						},
+					},
+				},
+			},
+			map[string]MetricInfo {
+				"foo": MetricInfo{
+					Value: &CWMetricStats{
+							Min:   0,
+							Max:   10,
+							Sum:   15.0,
+							Count: 5,
+						},
+					Unit: "Seconds",
+				},
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.testName, func(t *testing.T) {
+			groupedMetricMap := make(map[string]*GroupedMetric)
+			oc := consumerdata.MetricsData{
+				Node: &commonpb.Node{},
+				Resource: &resourcepb.Resource{
+					Labels: map[string]string{
+						conventions.AttributeServiceName:      "myServiceName",
+						conventions.AttributeServiceNamespace: "myServiceNS",
+					},
+				},
+				Metrics: []*metricspb.Metric{tc.metric},
+			}
+
+			// Retrieve *pdata.Metric
+			rm := internaldata.OCToMetrics(oc)
+			rms := rm.ResourceMetrics()
+			assert.Equal(t, 1, rms.Len())
+			ilms := rms.At(0).InstrumentationLibraryMetrics()
+			assert.Equal(t, 1, ilms.Len())
+			metrics := ilms.At(0).Metrics()
+			assert.Equal(t, 1, metrics.Len())
+			
+			totalDroppedMetrics := 0
+			groupedMetricMap, totalDroppedMetrics = TranslateOtToGroupedMetric(rm, config)
+			key := "NamespaceOTelLibUndefinedlabel1myServiceNS/myServiceNamevalue1"
+			
+			assert.Equal(t, len(tc.expected), len(groupedMetricMap[key].Metrics))
+			assert.Equal(t, 0, totalDroppedMetrics)
+
+			for i, expected := range tc.expected {
+				metrics := groupedMetricMap[key].Metrics
+				assert.Equal(t, len(tc.expected), len(metrics))
+				assert.Equal(t, i, "foo")
+				assert.Equal(t, expected.Value, metrics["foo"].Value)
+				assert.Equal(t, expected.Unit, metrics["foo"].Unit)
+			}
+		})
+	}
+
+	t.Run("Unhandled metric type", func(t *testing.T) {
+		groupedMetricMap := make(map[string]*GroupedMetric)
+		md := pdata.NewMetrics()
+		rms := md.ResourceMetrics()
+		rms.Resize(1)
+		rms.At(0).InstrumentationLibraryMetrics().Resize(1)
+		rms.At(0).InstrumentationLibraryMetrics().At(0).Metrics().Resize(1)
+		metric := rms.At(0).InstrumentationLibraryMetrics().At(0).Metrics().At(0)
+		metric.InitEmpty()
+		metric.SetName("foo")
+		metric.SetUnit("Count")
+		metric.SetDataType(pdata.MetricDataTypeIntHistogram)
+
+		obs, logs := observer.New(zap.WarnLevel)
+		obsConfig := &Config{
+			DimensionRollupOption: "",
+			logger:                zap.New(obs),
+		}
+		totalDroppedMetrics := 0
+		groupedMetricMap, totalDroppedMetrics = TranslateOtToGroupedMetric(md, obsConfig)
+		
+		assert.Equal(t, 0, len(groupedMetricMap))
+		assert.Equal(t, 0, totalDroppedMetrics)
+		
+		// Test output warning logs
+		expectedLogs := []observer.LoggedEntry{
+			{
+				Entry: zapcore.Entry{Level: zap.WarnLevel, Message: "Unhandled metric data type."},
+				Context: []zapcore.Field{
+					zap.String("DataType", "IntHistogram"),
+					zap.String("Name", "foo"),
+					zap.String("Unit", "Count"),
+				},
+			},
+		}
+		assert.Equal(t, 1, logs.Len())
+		assert.Equal(t, expectedLogs, logs.AllUntimed())
+	})
+}
+
+func TestBuildGroupedMetric(t *testing.T) {
+	namespace := "Namespace"
+	instrLibName := "InstrLibName"
+	OTellibDimensionKey := "OTelLib"
+	metric := pdata.NewMetric()
+	metric.InitEmpty()
+	metric.SetName("foo")
+
+	t.Run("Int gauge", func(t *testing.T) {
+		metric.SetDataType(pdata.MetricDataTypeIntGauge)
+		dp := pdata.NewIntDataPoint()
+		dp.InitEmpty()
+		dp.LabelsMap().InitFromMap(map[string]string{
+			"label1": "value1",
+		})
+		dp.SetValue(int64(-17))
+
+		fields := map[string]interface{}{
+			"Namespace": namespace,
+			OTellibDimensionKey: instrLibName,
+			"label1": "value1",
+		}
+
+		groupedMetric := buildGroupedMetric(dp, fields, &metric, "")
+
+		assert.NotNil(t, groupedMetric)
+		assert.Equal(t, 2, len(groupedMetric.Labels))
+		assert.Equal(t, 1, len(groupedMetric.Metrics))
+		expectedMetrics := map[string]MetricInfo{
+			"foo": MetricInfo {int64(-17), ""},
+		}
+		assert.Equal(t, expectedMetrics, groupedMetric.Metrics)
+		expectedLabels := map[string]string{
+			"OTelLib": "InstrLibName",
+			"label1": "value1",
+		}
+		assert.Equal(t, expectedLabels, groupedMetric.Labels)
+	})
+
+	t.Run("Double gauge", func(t *testing.T) {
+		metric.SetDataType(pdata.MetricDataTypeDoubleGauge)
+		dp := pdata.NewDoubleDataPoint()
+		dp.InitEmpty()
+		dp.LabelsMap().InitFromMap(map[string]string{
+			"label1": "value1",
+		})
+		dp.SetValue(0.3)
+
+		fields := map[string]interface{}{
+			"Namespace": namespace,
+			OTellibDimensionKey: instrLibName,
+			"label1": "value1",
+		}
+
+		groupedMetric := buildGroupedMetric(dp, fields, &metric, "")
+
+		assert.NotNil(t, groupedMetric)
+		assert.Equal(t, 2, len(groupedMetric.Labels))
+		assert.Equal(t, 1, len(groupedMetric.Metrics))
+		expectedMetrics := map[string]MetricInfo{
+			"foo": MetricInfo {0.3, ""},
+		}
+		assert.Equal(t, expectedMetrics, groupedMetric.Metrics)
+		expectedLabels := map[string]string{
+			"OTelLib": "InstrLibName",
+			"label1": "value1",
+		}
+		assert.Equal(t, expectedLabels, groupedMetric.Labels)
+	})
+
+	t.Run("Int sum", func(t *testing.T) {
+		metric.SetDataType(pdata.MetricDataTypeIntSum)
+		metric.IntSum().InitEmpty()
+		metric.IntSum().SetAggregationTemporality(pdata.AggregationTemporalityCumulative)
+		dp := pdata.NewIntDataPoint()
+		dp.InitEmpty()
+		dp.LabelsMap().InitFromMap(map[string]string{
+			"label1": "value1",
+		})
+		dp.SetValue(int64(-9))
+
+		fields := map[string]interface{}{
+			"Namespace": namespace,
+			OTellibDimensionKey: instrLibName,
+			"label1": "value1",
+		}
+
+		groupedMetric := buildGroupedMetric(dp, fields, &metric, "")
+
+		assert.NotNil(t, groupedMetric)
+		assert.Equal(t, 2, len(groupedMetric.Labels))
+		assert.Equal(t, 1, len(groupedMetric.Metrics))
+		expectedMetrics := map[string]MetricInfo{
+			"foo": MetricInfo {0, ""},
+		}
+		assert.Equal(t, expectedMetrics, groupedMetric.Metrics)
+		expectedLabels := map[string]string{
+			"OTelLib": "InstrLibName",
+			"label1": "value1",
+		}
+		assert.Equal(t, expectedLabels, groupedMetric.Labels)
+	})
+
+	t.Run("Double sum", func(t *testing.T) {
+		metric.SetDataType(pdata.MetricDataTypeDoubleSum)
+		metric.DoubleSum().InitEmpty()
+		metric.DoubleSum().SetAggregationTemporality(pdata.AggregationTemporalityCumulative)
+		dp := pdata.NewDoubleDataPoint()
+		dp.InitEmpty()
+		dp.LabelsMap().InitFromMap(map[string]string{
+			"label1": "value1",
+		})
+		dp.SetValue(0.3)
+
+		fields := map[string]interface{}{
+			"Namespace": namespace,
+			OTellibDimensionKey: instrLibName,
+			"label1": "value1",
+		}
+
+		groupedMetric := buildGroupedMetric(dp, fields, &metric, "")
+
+		assert.NotNil(t, groupedMetric)
+		assert.Equal(t, 2, len(groupedMetric.Labels))
+		assert.Equal(t, 1, len(groupedMetric.Metrics))
+		expectedMetrics := map[string]MetricInfo{
+			"foo": MetricInfo {0, ""},
+		}
+		assert.Equal(t, expectedMetrics, groupedMetric.Metrics)
+		expectedLabels := map[string]string{
+			"OTelLib": "InstrLibName",
+			"label1": "value1",
+		}
+		assert.Equal(t, expectedLabels, groupedMetric.Labels)
+	})
+
+	t.Run("Double histogram", func(t *testing.T) {
+		metric.SetDataType(pdata.MetricDataTypeDoubleHistogram)
+		dp := pdata.NewDoubleHistogramDataPoint()
+		dp.InitEmpty()
+		dp.LabelsMap().InitFromMap(map[string]string{
+			"label1": "value1",
+		})
+		dp.SetCount(uint64(17))
+		dp.SetSum(float64(17.13))
+		dp.SetBucketCounts([]uint64{1, 2, 3})
+		dp.SetExplicitBounds([]float64{1, 2, 3})
+
+		fields := map[string]interface{}{
+			"Namespace": namespace,
+			OTellibDimensionKey: instrLibName,
+			"label1": "value1",
+		}
+
+		groupedMetric := buildGroupedMetric(dp, fields, &metric, "")
+
+		assert.NotNil(t, groupedMetric)
+		assert.Equal(t, 2, len(groupedMetric.Labels))
+		assert.Equal(t, 1, len(groupedMetric.Metrics))
+		expectedMetrics := map[string]MetricInfo{
+			"foo": MetricInfo {&CWMetricStats{
+				Min:   1,
+				Max:   3,
+				Sum:   17.13,
+				Count: 17,
+			}, ""},
+		}
+		assert.Equal(t, expectedMetrics, groupedMetric.Metrics)
+		expectedLabels := map[string]string{
+			"OTelLib": "InstrLibName",
+			"label1": "value1",
+		}
+		assert.Equal(t, expectedLabels, groupedMetric.Labels)
+	})	
+
+	t.Run("Invalid datapoint type", func(t *testing.T) {
+		metric.SetDataType(pdata.MetricDataTypeIntGauge)
+		dp := pdata.NewIntHistogramDataPoint()
+		dp.InitEmpty()
+
+		fields := map[string]interface{}{
+			"Namespace": namespace,
+			OTellibDimensionKey: instrLibName,
+			"label1": "value1",
+		}
+
+		groupedMetric := buildGroupedMetric(dp, fields, &metric, "")
+		assert.Nil(t, groupedMetric)
+	})
+}
+
 func TestTranslateOtToCWMetricWithInstrLibrary(t *testing.T) {
 	config := &Config{
 		Namespace:             "",
