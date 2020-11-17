@@ -21,12 +21,13 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"fmt"
 
 	commonpb "github.com/census-instrumentation/opencensus-proto/gen-go/agent/common/v1"
 	metricspb "github.com/census-instrumentation/opencensus-proto/gen-go/metrics/v1"
 	resourcepb "github.com/census-instrumentation/opencensus-proto/gen-go/resource/v1"
 	"github.com/golang/protobuf/ptypes/timestamp"
-	"github.com/golang/protobuf/ptypes/wrappers"
+	// "github.com/golang/protobuf/ptypes/wrappers"
 	"github.com/stretchr/testify/assert"
 	"go.opentelemetry.io/collector/consumer/consumerdata"
 	"go.opentelemetry.io/collector/consumer/pdata"
@@ -227,51 +228,6 @@ func createMetricTestData() consumerdata.MetricsData {
 					},
 				},
 			},
-			{
-				MetricDescriptor: &metricspb.MetricDescriptor{
-					Name:        "spanTimer",
-					Description: "How long the spans take",
-					Unit:        "Seconds",
-					Type:        metricspb.MetricDescriptor_SUMMARY,
-					LabelKeys: []*metricspb.LabelKey{
-						{Key: "spanName"},
-					},
-				},
-				Timeseries: []*metricspb.TimeSeries{
-					{
-						LabelValues: []*metricspb.LabelValue{
-							{Value: "testSpan"},
-						},
-						Points: []*metricspb.Point{
-							{
-								Timestamp: &timestamp.Timestamp{
-									Seconds: 100,
-								},
-								Value: &metricspb.Point_SummaryValue{
-									SummaryValue: &metricspb.SummaryValue{
-										Sum: &wrappers.DoubleValue{
-											Value: 15.0,
-										},
-										Count: &wrappers.Int64Value{
-											Value: 5,
-										},
-										Snapshot: &metricspb.SummaryValue_Snapshot{
-											PercentileValues: []*metricspb.SummaryValue_Snapshot_ValueAtPercentile{{
-												Percentile: 0,
-												Value:      1,
-											},
-												{
-													Percentile: 100,
-													Value:      5,
-												}},
-										},
-									},
-								},
-							},
-						},
-					},
-				},
-			},
 		},
 	}
 }
@@ -296,7 +252,7 @@ func assertDimsEqual(t *testing.T, expected, actual [][]string) {
 }
 
 // Asserts whether CW Measurements are equal.
-func assertCwMeasurementEqual(t *testing.T, expected, actual CwMeasurement) {
+func assertCWMeasurementEqual(t *testing.T, expected, actual CWMeasurement) {
 	assert.Equal(t, expected.Namespace, actual.Namespace)
 	assert.Equal(t, expected.Metrics, actual.Metrics)
 	assertDimsEqual(t, expected.Dimensions, actual.Dimensions)
@@ -314,9 +270,13 @@ func TestTranslateOtToGroupedMetric(t *testing.T) {
 	totalDroppedMetrics := 0
 	groupedMetricMap, totalDroppedMetrics = TranslateOtToGroupedMetric(rm, config)
 
-	assert.Equal(t, 1, totalDroppedMetrics)
+	assert.Equal(t, 0, totalDroppedMetrics)
 	assert.NotNil(t, groupedMetricMap)
 
+	for k, v := range groupedMetricMap {
+		fmt.Println(k)
+		fmt.Printf("%+v\n", v)
+	}
 	metricsMap = groupedMetricMap["NamespaceOTelLibUndefinedfalseisItAnErrormyServiceNS/myServiceNamespanNametestSpan"].Metrics
 	assert.Equal(t, 4, len(metricsMap))
 	metricsMap = groupedMetricMap["NamespaceOTelLibUndefinedmyServiceNS/myServiceNamespanNametestSpan"].Metrics
@@ -949,7 +909,7 @@ func TestTranslateOtToCWMetricWithInstrLibrary(t *testing.T) {
 
 	assert.Equal(t, met.Fields["spanCounter"], 0)
 
-	expectedMeasurement := CwMeasurement{
+	expectedMeasurement := CWMeasurement{
 		Namespace: "myServiceNS/myServiceName",
 		Dimensions: [][]string{
 			{OTellibDimensionKey, "isItAnError", "spanName"},
@@ -964,7 +924,7 @@ func TestTranslateOtToCWMetricWithInstrLibrary(t *testing.T) {
 			},
 		},
 	}
-	assertCwMeasurementEqual(t, expectedMeasurement, met.Measurements[0])
+	assertCWMeasurementEqual(t, expectedMeasurement, met.Measurements[0])
 }
 
 func TestTranslateOtToCWMetricWithoutInstrLibrary(t *testing.T) {
@@ -985,7 +945,7 @@ func TestTranslateOtToCWMetricWithoutInstrLibrary(t *testing.T) {
 	assert.NotContains(t, met.Fields, OTellibDimensionKey)
 	assert.Equal(t, met.Fields["spanCounter"], 0)
 
-	expectedMeasurement := CwMeasurement{
+	expectedMeasurement := CWMeasurement{
 		Namespace: "myServiceNS/myServiceName",
 		Dimensions: [][]string{
 			{"isItAnError", "spanName"},
@@ -1000,7 +960,7 @@ func TestTranslateOtToCWMetricWithoutInstrLibrary(t *testing.T) {
 			},
 		},
 	}
-	assertCwMeasurementEqual(t, expectedMeasurement, met.Measurements[0])
+	assertCWMeasurementEqual(t, expectedMeasurement, met.Measurements[0])
 }
 
 func TestTranslateOtToCWMetricWithNameSpace(t *testing.T) {
@@ -1278,7 +1238,7 @@ func TestTranslateOtToCWMetricWithFiltering(t *testing.T) {
 }
 
 func TestTranslateCWMetricToEMF(t *testing.T) {
-	cwMeasurement := CwMeasurement{
+	cwMeasurement := CWMeasurement{
 		Namespace:  "test-emf",
 		Dimensions: [][]string{{OTellibDimensionKey}, {OTellibDimensionKey, "spanName"}},
 		Metrics: []map[string]string{{
@@ -1295,7 +1255,7 @@ func TestTranslateCWMetricToEMF(t *testing.T) {
 	met := &CWMetrics{
 		Timestamp:    timestamp,
 		Fields:       fields,
-		Measurements: []CwMeasurement{cwMeasurement},
+		Measurements: []CWMeasurement{cwMeasurement},
 	}
 	logger := zap.NewNop()
 	inputLogEvent := TranslateCWMetricToEMF([]*CWMetrics{met}, logger)
@@ -1389,7 +1349,7 @@ func TestGetCWMetrics(t *testing.T) {
 			},
 			[]*CWMetrics{
 				{
-					Measurements: []CwMeasurement{
+					Measurements: []CWMeasurement{
 						{
 							Namespace: namespace,
 							Dimensions: [][]string{
@@ -1408,7 +1368,7 @@ func TestGetCWMetrics(t *testing.T) {
 					},
 				},
 				{
-					Measurements: []CwMeasurement{
+					Measurements: []CWMeasurement{
 						{
 							Namespace: namespace,
 							Dimensions: [][]string{
@@ -1470,7 +1430,7 @@ func TestGetCWMetrics(t *testing.T) {
 			},
 			[]*CWMetrics{
 				{
-					Measurements: []CwMeasurement{
+					Measurements: []CWMeasurement{
 						{
 							Namespace: namespace,
 							Dimensions: [][]string{
@@ -1489,7 +1449,7 @@ func TestGetCWMetrics(t *testing.T) {
 					},
 				},
 				{
-					Measurements: []CwMeasurement{
+					Measurements: []CWMeasurement{
 						{
 							Namespace: namespace,
 							Dimensions: [][]string{
@@ -1551,7 +1511,7 @@ func TestGetCWMetrics(t *testing.T) {
 			},
 			[]*CWMetrics{
 				{
-					Measurements: []CwMeasurement{
+					Measurements: []CWMeasurement{
 						{
 							Namespace: namespace,
 							Dimensions: [][]string{
@@ -1570,7 +1530,7 @@ func TestGetCWMetrics(t *testing.T) {
 					},
 				},
 				{
-					Measurements: []CwMeasurement{
+					Measurements: []CWMeasurement{
 						{
 							Namespace: namespace,
 							Dimensions: [][]string{
@@ -1632,7 +1592,7 @@ func TestGetCWMetrics(t *testing.T) {
 			},
 			[]*CWMetrics{
 				{
-					Measurements: []CwMeasurement{
+					Measurements: []CWMeasurement{
 						{
 							Namespace: namespace,
 							Dimensions: [][]string{
@@ -1651,7 +1611,7 @@ func TestGetCWMetrics(t *testing.T) {
 					},
 				},
 				{
-					Measurements: []CwMeasurement{
+					Measurements: []CWMeasurement{
 						{
 							Namespace: namespace,
 							Dimensions: [][]string{
@@ -1755,7 +1715,7 @@ func TestGetCWMetrics(t *testing.T) {
 			},
 			[]*CWMetrics{
 				{
-					Measurements: []CwMeasurement{
+					Measurements: []CWMeasurement{
 						{
 							Namespace: namespace,
 							Dimensions: [][]string{
@@ -1779,7 +1739,7 @@ func TestGetCWMetrics(t *testing.T) {
 					},
 				},
 				{
-					Measurements: []CwMeasurement{
+					Measurements: []CWMeasurement{
 						{
 							Namespace: namespace,
 							Dimensions: [][]string{
@@ -1834,7 +1794,7 @@ func TestGetCWMetrics(t *testing.T) {
 				cwMetric := cwMetrics[i]
 				assert.Equal(t, len(expected.Measurements), len(cwMetric.Measurements))
 				for i, expectedMeasurement := range expected.Measurements {
-					assertCwMeasurementEqual(t, expectedMeasurement, cwMetric.Measurements[i])
+					assertCWMeasurementEqual(t, expectedMeasurement, cwMetric.Measurements[i])
 				}
 				assert.Equal(t, len(expected.Fields), len(cwMetric.Fields))
 				assert.Equal(t, expected.Fields, cwMetric.Fields)
@@ -1912,12 +1872,12 @@ func TestBuildCWMetric(t *testing.T) {
 
 		assert.NotNil(t, cwMetric)
 		assert.Equal(t, 1, len(cwMetric.Measurements))
-		expectedMeasurement := CwMeasurement{
+		expectedMeasurement := CWMeasurement{
 			Namespace:  namespace,
 			Dimensions: [][]string{{"label1", OTelLib}},
 			Metrics:    metricSlice,
 		}
-		assertCwMeasurementEqual(t, expectedMeasurement, cwMetric.Measurements[0])
+		assertCWMeasurementEqual(t, expectedMeasurement, cwMetric.Measurements[0])
 		expectedFields := map[string]interface{}{
 			OTelLib:  instrLibName,
 			"foo":    int64(-17),
@@ -1939,12 +1899,12 @@ func TestBuildCWMetric(t *testing.T) {
 
 		assert.NotNil(t, cwMetric)
 		assert.Equal(t, 1, len(cwMetric.Measurements))
-		expectedMeasurement := CwMeasurement{
+		expectedMeasurement := CWMeasurement{
 			Namespace:  namespace,
 			Dimensions: [][]string{{"label1", OTelLib}},
 			Metrics:    metricSlice,
 		}
-		assertCwMeasurementEqual(t, expectedMeasurement, cwMetric.Measurements[0])
+		assertCWMeasurementEqual(t, expectedMeasurement, cwMetric.Measurements[0])
 		expectedFields := map[string]interface{}{
 			OTelLib:  instrLibName,
 			"foo":    0.3,
@@ -1968,12 +1928,12 @@ func TestBuildCWMetric(t *testing.T) {
 
 		assert.NotNil(t, cwMetric)
 		assert.Equal(t, 1, len(cwMetric.Measurements))
-		expectedMeasurement := CwMeasurement{
+		expectedMeasurement := CWMeasurement{
 			Namespace:  namespace,
 			Dimensions: [][]string{{"label1", OTelLib}},
 			Metrics:    metricSlice,
 		}
-		assertCwMeasurementEqual(t, expectedMeasurement, cwMetric.Measurements[0])
+		assertCWMeasurementEqual(t, expectedMeasurement, cwMetric.Measurements[0])
 		expectedFields := map[string]interface{}{
 			OTelLib:  instrLibName,
 			"foo":    0,
@@ -1997,12 +1957,12 @@ func TestBuildCWMetric(t *testing.T) {
 
 		assert.NotNil(t, cwMetric)
 		assert.Equal(t, 1, len(cwMetric.Measurements))
-		expectedMeasurement := CwMeasurement{
+		expectedMeasurement := CWMeasurement{
 			Namespace:  namespace,
 			Dimensions: [][]string{{"label1", OTelLib}},
 			Metrics:    metricSlice,
 		}
-		assertCwMeasurementEqual(t, expectedMeasurement, cwMetric.Measurements[0])
+		assertCWMeasurementEqual(t, expectedMeasurement, cwMetric.Measurements[0])
 		expectedFields := map[string]interface{}{
 			OTelLib:  instrLibName,
 			"foo":    0,
@@ -2027,12 +1987,12 @@ func TestBuildCWMetric(t *testing.T) {
 
 		assert.NotNil(t, cwMetric)
 		assert.Equal(t, 1, len(cwMetric.Measurements))
-		expectedMeasurement := CwMeasurement{
+		expectedMeasurement := CWMeasurement{
 			Namespace:  namespace,
 			Dimensions: [][]string{{"label1", OTelLib}},
 			Metrics:    metricSlice,
 		}
-		assertCwMeasurementEqual(t, expectedMeasurement, cwMetric.Measurements[0])
+		assertCWMeasurementEqual(t, expectedMeasurement, cwMetric.Measurements[0])
 		expectedFields := map[string]interface{}{
 			OTelLib: instrLibName,
 			"foo": &CWMetricStats{
@@ -2135,7 +2095,7 @@ func TestBuildCWMetric(t *testing.T) {
 			for k, v := range tc.labels {
 				expectedFields[k] = v
 			}
-			expectedMeasurement := CwMeasurement{
+			expectedMeasurement := CWMeasurement{
 				Namespace:  namespace,
 				Dimensions: tc.expectedDims,
 				Metrics:    metricSlice,
@@ -2148,7 +2108,7 @@ func TestBuildCWMetric(t *testing.T) {
 
 			// Check CW measurement
 			assert.Equal(t, 1, len(cwMetric.Measurements))
-			assertCwMeasurementEqual(t, expectedMeasurement, cwMetric.Measurements[0])
+			assertCWMeasurementEqual(t, expectedMeasurement, cwMetric.Measurements[0])
 		})
 	}
 }
@@ -2477,12 +2437,12 @@ func TestBuildCWMetricWithMetricDeclarations(t *testing.T) {
 				assert.Equal(t, 0, len(cwMetric.Measurements))
 			} else {
 				assert.Equal(t, 1, len(cwMetric.Measurements))
-				expectedMeasurement := CwMeasurement{
+				expectedMeasurement := CWMeasurement{
 					Namespace:  namespace,
 					Dimensions: tc.expectedDims,
 					Metrics:    metricSlice,
 				}
-				assertCwMeasurementEqual(t, expectedMeasurement, cwMetric.Measurements[0])
+				assertCWMeasurementEqual(t, expectedMeasurement, cwMetric.Measurements[0])
 			}
 		})
 	}
@@ -2705,7 +2665,7 @@ func BenchmarkTranslateOtToCWMetricWithFiltering(b *testing.B) {
 }
 
 func BenchmarkTranslateCWMetricToEMF(b *testing.B) {
-	cwMeasurement := CwMeasurement{
+	cwMeasurement := CWMeasurement{
 		Namespace:  "test-emf",
 		Dimensions: [][]string{{OTellibDimensionKey}, {OTellibDimensionKey, "spanName"}},
 		Metrics: []map[string]string{{
@@ -2722,7 +2682,7 @@ func BenchmarkTranslateCWMetricToEMF(b *testing.B) {
 	met := &CWMetrics{
 		Timestamp:    timestamp,
 		Fields:       fields,
-		Measurements: []CwMeasurement{cwMeasurement},
+		Measurements: []CWMeasurement{cwMeasurement},
 	}
 	logger := zap.NewNop()
 

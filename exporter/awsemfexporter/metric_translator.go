@@ -57,13 +57,13 @@ type rateState struct {
 	timestamp int64
 }
 
-// MetricInfo defines
+// MetricInfo defines value and unit for OT Metrics
 type MetricInfo struct {
 	Value  interface{}
 	Unit   string
 }
 
-// GroupedMetric defines
+// GroupedMetric defines set of metrics with same namespace, timestamp and labels
 type GroupedMetric struct {
 	Namespace    string
 	Timestamp    int64
@@ -135,9 +135,9 @@ func (dps DoubleHistogramDataPointSlice) At(i int) DataPoint {
 }
 
 
-// Retrieve namespace for given set of metrics from user config 
+// getNamespace retrieve namespace for given set of metrics from user config 
 func getNamespace(rm *pdata.ResourceMetrics, namespace string) (string) {
-	if len(namespace) == 0 && !rm.Resource().IsNil() {
+	if len(namespace) == 0 {
 		serviceName, svcNameOk := rm.Resource().Attributes().Get(conventions.AttributeServiceName)
 		serviceNamespace, svcNsOk := rm.Resource().Attributes().Get(conventions.AttributeServiceNamespace)
 		if svcNameOk && svcNsOk && serviceName.Type() == pdata.AttributeValueSTRING && serviceNamespace.Type() == pdata.AttributeValueSTRING {
@@ -159,7 +159,6 @@ func getNamespace(rm *pdata.ResourceMetrics, namespace string) (string) {
 func TranslateOtToGroupedMetric(metric pdata.Metrics, config *Config) (map[string]*GroupedMetric, int) {
 	totalDroppedMetrics := 0
 	groupedMetricMap := make(map[string]*GroupedMetric)
-	var dps DataPoints
 	var instrumentationLibName string
 	rms := metric.ResourceMetrics()
 	for i := 0; i < rms.Len(); i++ {
@@ -182,69 +181,14 @@ func TranslateOtToGroupedMetric(metric pdata.Metrics, config *Config) (map[strin
 			}
 
 			metrics := ilm.Metrics()
-			for k := 0; k < metrics.Len(); k++ {
-				metric := metrics.At(k)
-				if metric.IsNil() {
-					totalDroppedMetrics++
-					continue
-				}
-
-				switch metric.DataType() {
-					case pdata.MetricDataTypeIntGauge:
-						dps = IntDataPointSlice{metric.IntGauge().DataPoints()}
-					case pdata.MetricDataTypeDoubleGauge:
-						dps = DoubleDataPointSlice{metric.DoubleGauge().DataPoints()}
-					case pdata.MetricDataTypeIntSum:
-						dps = IntDataPointSlice{metric.IntSum().DataPoints()}
-					case pdata.MetricDataTypeDoubleSum:
-						dps = DoubleDataPointSlice{metric.DoubleSum().DataPoints()}
-					case pdata.MetricDataTypeDoubleHistogram:
-						dps = DoubleHistogramDataPointSlice{metric.DoubleHistogram().DataPoints()}
-					default:
-						config.logger.Warn("Unhandled metric data type.",
-							zap.String("DataType", metric.DataType().String()),
-							zap.String("Name", metric.Name()),
-							zap.String("Unit", metric.Unit()),)
+			if metrics.Len() > 0 {
+				for k := 0; k < metrics.Len(); k++ {
+					metric := metrics.At(k)
+					if metric.IsNil() {
+						totalDroppedMetrics++
 						continue
-				}
-
-				if dps.Len() == 0 {
-					continue
-				}
-
-				for m := 0; m < dps.Len(); m++ {
-					dp := dps.At(m)
-					if dp.IsNil() {
-						continue
-					}
-
-					fields := make(map[string]interface{})
-					fields[nameSpace] = namespace
-					fields[OTellibDimensionKey] = instrumentationLibName
-	
-					dp.LabelsMap().ForEach(func(k string, v string) {
-						fields[k] = v
-					})
-					
-					s := make([]string, len(fields)*2)
-					for k, v := range fields {
-						if (k != OTellibDimensionKey) {
-							s = append(s, k, v.(string))
-						} else {
-							s = append(s, k, v.(string))
-						}
-					}
-					sort.Strings(s)
-					key := strings.Join(s, "")
-
-					if _, ok := groupedMetricMap[key]; ok {
-						updateGroupedMetric(dp, &metric, key, groupedMetricMap)
-					} else {
-						groupedMetric := buildGroupedMetric(dp, fields, &metric, config.DimensionRollupOption)
-						if groupedMetric != nil {
-							groupedMetricMap[key] = groupedMetric
-						}
-					}
+					}					
+					getGroupedMetrics(&metric, namespace, instrumentationLibName, groupedMetricMap, config)
 				}
 			}
 		}
@@ -252,7 +196,70 @@ func TranslateOtToGroupedMetric(metric pdata.Metrics, config *Config) (map[strin
 	return groupedMetricMap, totalDroppedMetrics
 }
 
-// Build grouped metric from Datapoint and pdata.Metric
+
+func getGroupedMetrics(metric *pdata.Metric, namespace string, instrumentationLibName string, groupedMetricMap map[string]*GroupedMetric, config *Config) {
+	if metric == nil {
+		return
+	}
+
+	// Retrieve Datapoints
+	var dps DataPoints
+	switch metric.DataType() {
+		case pdata.MetricDataTypeIntGauge:
+			dps = IntDataPointSlice{metric.IntGauge().DataPoints()}
+		case pdata.MetricDataTypeDoubleGauge:
+			dps = DoubleDataPointSlice{metric.DoubleGauge().DataPoints()}
+		case pdata.MetricDataTypeIntSum:
+			dps = IntDataPointSlice{metric.IntSum().DataPoints()}
+		case pdata.MetricDataTypeDoubleSum:
+			dps = DoubleDataPointSlice{metric.DoubleSum().DataPoints()}
+		case pdata.MetricDataTypeDoubleHistogram:
+			dps = DoubleHistogramDataPointSlice{metric.DoubleHistogram().DataPoints()}
+		default:
+			config.logger.Warn("Unhandled metric data type.",
+				zap.String("DataType", metric.DataType().String()),
+				zap.String("Name", metric.Name()),
+				zap.String("Unit", metric.Unit()),)
+			return
+	}
+
+	if dps.Len() == 0 {
+		return
+	}
+
+	for m := 0; m < dps.Len(); m++ {
+		dp := dps.At(m)
+		if dp.IsNil() {
+			continue
+		}
+
+		fields := make(map[string]interface{})
+		s := []string{nameSpace, namespace, OTellibDimensionKey, instrumentationLibName}
+		fields[nameSpace] = namespace
+		fields[OTellibDimensionKey] = instrumentationLibName
+
+		dp.LabelsMap().ForEach(func(k string, v string) {
+			fields[k] = v
+			if (v != noInstrumentationLibraryName) {
+				s =append(s, k, v)
+			}
+		})
+
+		sort.Strings(s)
+		key := strings.Join(s, "")
+
+		if _, ok := groupedMetricMap[key]; ok {
+			updateGroupedMetric(dp, metric, key, groupedMetricMap)
+		} else {
+			groupedMetric := buildGroupedMetric(dp, fields, metric, config.DimensionRollupOption)
+			if groupedMetric != nil {
+				groupedMetricMap[key] = groupedMetric
+			}
+		}
+	}
+}
+
+// buildGroupedMetric builds GroupedMetric from Datapoint and pdata.Metric
 func buildGroupedMetric (dp DataPoint, fields map[string]interface{}, pMetricData *pdata.Metric, dimensionRollupOption string) (*GroupedMetric) {
 	var namespace string
 	timestamp := time.Now().UnixNano() / int64(time.Millisecond)
@@ -309,7 +316,7 @@ func buildGroupedMetric (dp DataPoint, fields map[string]interface{}, pMetricDat
 	return groupedMetric
 }
 
-// Update GroupedMetric with new metric from datapoint
+// updateGroupedMetric adds new metric to existing GroupedMetric from datapoint
 func updateGroupedMetric (dp DataPoint, pMetricData *pdata.Metric, key string, groupedMetricMap map[string]*GroupedMetric) {
 	timestamp := time.Now().UnixNano() / int64(time.Millisecond)
 
@@ -335,16 +342,16 @@ func updateGroupedMetric (dp DataPoint, pMetricData *pdata.Metric, key string, g
 	if metricVal == nil {
 		return
 	}
-	metricInfo := &MetricInfo {
+	metricInfo := MetricInfo {
 		Value: metricVal,
 		Unit:  pMetricData.Unit(),
 	}
 
-	groupedMetricMap[key].Metrics[pMetricData.Name()] = *metricInfo
+	groupedMetricMap[key].Metrics[pMetricData.Name()] = metricInfo
 	groupedMetricMap[key].Timestamp = timestamp
 }
 
-// convert map of GroupedMetric objects into map format for compatible with PLE input
+// TranslateBatchedMetricToEMF convert map of GroupedMetric objects into map format for compatible with PLE input
 func TranslateBatchedMetricToEMF(groupedMetricMap map[string]*GroupedMetric) []*LogEvent {
 	ples := make([]*LogEvent, 0, maximumLogEventsPerPut)
 	for _, v := range groupedMetricMap {
