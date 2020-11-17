@@ -197,7 +197,7 @@ func TranslateOtToGroupedMetric(metric pdata.Metrics, config *Config) (map[strin
 }
 
 
-func getGroupedMetrics(metric *pdata.Metric, namespace string, instrumentationLibName string, groupedMetricMap map[string]*GroupedMetric, config *Config) {
+func getGroupedMetrics(metric *pdata.Metric, namespace string, instrumentationLibName string, groupedMetricMap map[string]*GroupedMetric, config *Config) (groupedMetrics []*GroupedMetric){
 	if metric == nil {
 		return
 	}
@@ -250,13 +250,16 @@ func getGroupedMetrics(metric *pdata.Metric, namespace string, instrumentationLi
 
 		if _, ok := groupedMetricMap[key]; ok {
 			updateGroupedMetric(dp, metric, key, groupedMetricMap)
+			groupedMetrics = append(groupedMetrics, groupedMetricMap[key])
 		} else {
 			groupedMetric := buildGroupedMetric(dp, fields, metric, config.DimensionRollupOption)
 			if groupedMetric != nil {
 				groupedMetricMap[key] = groupedMetric
+				groupedMetrics = append(groupedMetrics,groupedMetric)
 			}
 		}
 	}
+	return
 }
 
 // buildGroupedMetric builds GroupedMetric from Datapoint and pdata.Metric

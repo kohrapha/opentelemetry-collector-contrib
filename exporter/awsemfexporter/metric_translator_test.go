@@ -21,7 +21,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-	"fmt"
 
 	commonpb "github.com/census-instrumentation/opencensus-proto/gen-go/agent/common/v1"
 	metricspb "github.com/census-instrumentation/opencensus-proto/gen-go/metrics/v1"
@@ -273,10 +272,6 @@ func TestTranslateOtToGroupedMetric(t *testing.T) {
 	assert.Equal(t, 0, totalDroppedMetrics)
 	assert.NotNil(t, groupedMetricMap)
 
-	for k, v := range groupedMetricMap {
-		fmt.Println(k)
-		fmt.Printf("%+v\n", v)
-	}
 	metricsMap = groupedMetricMap["NamespaceOTelLibUndefinedfalseisItAnErrormyServiceNS/myServiceNamespanNametestSpan"].Metrics
 	assert.Equal(t, 4, len(metricsMap))
 	metricsMap = groupedMetricMap["NamespaceOTelLibUndefinedmyServiceNS/myServiceNamespanNametestSpan"].Metrics
@@ -376,8 +371,11 @@ func TestTranslateOtToGroupedMetricWithNameSpace(t *testing.T) {
 	assert.Equal(t, "myServiceNS", groupedMetricMap["NamespaceOTelLibUndefinedfalseisItAnErrormyServiceNSspanNametestSpan"].Namespace)
 }
 
-func TestTranslateOtToGroupedMetricWithAllDataTypes(t *testing.T) {
+func TestGetGroupedMetrics(t *testing.T) {
+	namespace := "nginx"
+	instrumentationLibName := "InstrLibName"
 	config := &Config{
+		Namespace:             "",
 		DimensionRollupOption: "",
 	}
 
@@ -638,13 +636,12 @@ func TestTranslateOtToGroupedMetricWithAllDataTypes(t *testing.T) {
 			assert.Equal(t, 1, ilms.Len())
 			metrics := ilms.At(0).Metrics()
 			assert.Equal(t, 1, metrics.Len())
+			metric := metrics.At(0)
 			
-			totalDroppedMetrics := 0
-			groupedMetricMap, totalDroppedMetrics = TranslateOtToGroupedMetric(rm, config)
-			key := "NamespaceOTelLibUndefinedlabel1myServiceNS/myServiceNamevalue1"
+			getGroupedMetrics(&metric, namespace, instrumentationLibName, groupedMetricMap, config)
+			key := "InstrLibNameNamespaceOTelLiblabel1nginxvalue1"
 			
 			assert.Equal(t, len(tc.expected), len(groupedMetricMap[key].Metrics))
-			assert.Equal(t, 0, totalDroppedMetrics)
 
 			for i, expected := range tc.expected {
 				metrics := groupedMetricMap[key].Metrics
@@ -657,6 +654,8 @@ func TestTranslateOtToGroupedMetricWithAllDataTypes(t *testing.T) {
 	}
 
 	t.Run("Unhandled metric type", func(t *testing.T) {
+		namespace := "nginx"
+		instrumentationLibName := "InstrLibName"
 		groupedMetricMap := make(map[string]*GroupedMetric)
 		md := pdata.NewMetrics()
 		rms := md.ResourceMetrics()
@@ -674,12 +673,9 @@ func TestTranslateOtToGroupedMetricWithAllDataTypes(t *testing.T) {
 			DimensionRollupOption: "",
 			logger:                zap.New(obs),
 		}
-		totalDroppedMetrics := 0
-		groupedMetricMap, totalDroppedMetrics = TranslateOtToGroupedMetric(md, obsConfig)
-		
+		getGroupedMetrics(&metric, namespace, instrumentationLibName, groupedMetricMap, obsConfig)
 		assert.Equal(t, 0, len(groupedMetricMap))
-		assert.Equal(t, 0, totalDroppedMetrics)
-		
+
 		// Test output warning logs
 		expectedLogs := []observer.LoggedEntry{
 			{
@@ -693,6 +689,12 @@ func TestTranslateOtToGroupedMetricWithAllDataTypes(t *testing.T) {
 		}
 		assert.Equal(t, 1, logs.Len())
 		assert.Equal(t, expectedLogs, logs.AllUntimed())
+	})
+
+	t.Run("Nil metric", func(t *testing.T) {
+		groupedMetricMap := make(map[string]*GroupedMetric)
+		groupedMetrics := getGroupedMetrics(nil, namespace, instrumentationLibName, groupedMetricMap, config)
+		assert.Nil(t, groupedMetrics)
 	})
 }
 
