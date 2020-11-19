@@ -340,10 +340,14 @@ func updateGroupedMetric (dp DataPoint, pMetricData *pdata.Metric, key string, g
 	switch metric := dp.(type) {
 	case pdata.IntDataPoint:
 		metricVal = int64(metric.Value())
-
+		if needsCalculateRate(pMetricData) {
+			metricVal = calculateRate(labels, pMetricData.Name(), metric.Value(), timestamp)
+		}
 	case pdata.DoubleDataPoint:
 		metricVal = float64(metric.Value())
-
+		if needsCalculateRate(pMetricData) {
+			metricVal = calculateRate(labels, pMetricData.Name(), metric.Value(), timestamp)
+		}
 	case pdata.DoubleHistogramDataPoint:
 		bucketBounds := metric.ExplicitBounds()
 		metricVal = &CWMetricStats{
