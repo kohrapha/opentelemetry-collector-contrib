@@ -40,6 +40,7 @@ const (
 	defaultNameSpace             = "default"
 	noInstrumentationLibraryName = "Undefined"
 	namespaceKey                 = "CloudWatchNamespace"
+	timestampKey				 = "CloudWatchTimestamp"
 
 	// See: http://docs.aws.amazon.com/AmazonCloudWatchLogs/latest/APIReference/API_PutLogEvents.html
 	maximumLogEventsPerPut = 10000
@@ -264,17 +265,24 @@ func getGroupedMetrics(metric *pdata.Metric, namespace string, instrumentationLi
 
 // getGroupedMetricKey generates a key for a given GroupedMetric
 func getGroupedMetricKey(cwNamespace string, timestamp int64, labels map[string]string) (string) {
-	var keySlice []string
-	nameSpace := namespaceKey + cwNamespace
-	timeStamp := "Timestamp:" + strconv.FormatInt(timestamp, 10)
-	keySlice = append(keySlice, nameSpace, timeStamp)
+	keySlice := make([]string, 0, len(labels) + 2)
+	fields := make(map[string]string)
+	fields[namespaceKey] = cwNamespace
+	fields[timestampKey] = strconv.FormatInt(timestamp, 10)
+	keySlice = append(keySlice, namespaceKey, timestampKey)
 
 	for k, v := range labels {
-		keyValuePair := k + ":" + v 
-		keySlice = append(keySlice, keyValuePair)
+		fields[k] = v
+		keySlice = append(keySlice, k)
 	}
+
 	sort.Strings(keySlice)
-	key := strings.Join(keySlice, ",")
+	fieldsSlice := make([]string, 0, len(keySlice))
+	for _, v := range keySlice {
+		keyValuePair := v + ":" + fields[v]
+		fieldsSlice = append(fieldsSlice, keyValuePair)
+	}
+	key := strings.Join(fieldsSlice, ",")
 	return key
 }
 
@@ -362,10 +370,113 @@ func updateGroupedMetric (dp DataPoint, pMetricData *pdata.Metric, key string, g
 				zap.String("DataType", pMetricData.DataType().String()),
 				zap.String("Name", pMetricData.Name()),
 				zap.String("Unit", pMetricData.Unit()),)
-		groupedMetricMap[key].Metrics[metricName] = &metricInfo
 	} else {
 		groupedMetricMap[key].Metrics[metricName] = &metricInfo
 	}
+}
+
+// rate is calculated by valDelta / timeDelta
+func calculateRate(labels map[string]string, name string, val interface{}, timestamp int64) interface{} {
+	keys := make([]string, 0, len(labels)+1)
+	var b bytes.Buffer
+	var metricRate interface{}
+
+	keys = append(keys, name)
+	for k := range labels {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	for _, k := range keys {
+		if v, ok := labels[k]; ok {
+			// labels
+			b.WriteString(k)
+			b.WriteString(v)
+		} else {
+			// metric
+			b.WriteString(k)
+		}
+	}
+	// hash the key of str: metric + dimension key/value pairs (sorted alpha)
+	h := sha1.New()
+	h.Write(b.Bytes())
+	bs := h.Sum(nil)
+	hashStr := string(bs)
+
+	// get previous Metric content from map. Need to lock the map until set the new state
+	currentState.Lock()
+	if state, ok := currentState.Get(hashStr); ok {
+		prevStats := state.(*rateState)
+		deltaTime := timestamp - prevStats.timestamp
+		var deltaVal interface{}
+
+		if _, ok := val.(float64); ok {
+			if _, ok := prevStats.value.(int64); ok {
+				deltaVal = val.(float64) - float64(prevStats.value.(int64))
+			} else {
+				deltaVal = val.(float64) - prevStats.value.(float64)
+			}
+			if deltaTime > MinTimeDiff.Milliseconds() && deltaVal.(float64) >= 0 {
+				metricRate = deltaVal.(float64) * 1e3 / float64(deltaTime)
+			}
+		} else {
+			if _, ok := prevStats.value.(float64); ok {
+				deltaVal = val.(int64) - int64(prevStats.value.(float64))
+			} else {
+				deltaVal = val.(int64) - prevStats.value.(int64)
+			}
+			if deltaTime > MinTimeDiff.Milliseconds() && deltaVal.(int64) >= 0 {
+				metricRate = deltaVal.(int64) * 1e3 / deltaTime
+			}
+		}
+	}
+	content := &rateState{
+		value:     val,
+		timestamp: timestamp,
+	}
+	currentState.Set(hashStr, content)
+	currentState.Unlock()
+	if metricRate == nil {
+		metricRate = 0
+	}
+	return metricRate
+}
+
+// dimensionRollup creates rolled-up dimensions from the metric's label set.
+func dimensionRollup(dimensionRollupOption string, originalDimensionSlice []string, instrumentationLibName string) [][]string {
+	var rollupDimensionArray [][]string
+	dimensionZero := []string{}
+	if instrumentationLibName != noInstrumentationLibraryName {
+		dimensionZero = append(dimensionZero, OTellibDimensionKey)
+	}
+	if dimensionRollupOption == ZeroAndSingleDimensionRollup {
+		//"Zero" dimension rollup
+		if len(originalDimensionSlice) > 0 {
+			rollupDimensionArray = append(rollupDimensionArray, dimensionZero)
+		}
+	}
+	if dimensionRollupOption == ZeroAndSingleDimensionRollup || dimensionRollupOption == SingleDimensionRollupOnly {
+		//"One" dimension rollup
+		for _, dimensionKey := range originalDimensionSlice {
+			rollupDimensionArray = append(rollupDimensionArray, append(dimensionZero, dimensionKey))
+		}
+	}
+
+	return rollupDimensionArray
+}
+
+func needsCalculateRate(pmd *pdata.Metric) bool {
+	switch pmd.DataType() {
+	case pdata.MetricDataTypeIntSum:
+		if !pmd.IntSum().IsNil() && pmd.IntSum().AggregationTemporality() == pdata.AggregationTemporalityCumulative {
+			return true
+		}
+	case pdata.MetricDataTypeDoubleSum:
+		if !pmd.DoubleSum().IsNil() && pmd.DoubleSum().AggregationTemporality() == pdata.AggregationTemporalityCumulative {
+			return true
+		}
+	}
+	return false
 }
 
 // TranslateOtToCWMetric converts OT metrics to CloudWatch Metric format
@@ -606,106 +717,4 @@ func buildCWMetric(dp DataPoint, pmd *pdata.Metric, namespace string, metricSlic
 		Fields:       fields,
 	}
 	return cwMetric
-}
-
-// rate is calculated by valDelta / timeDelta
-func calculateRate(labels map[string]string, name string, val interface{}, timestamp int64) interface{} {
-	keys := make([]string, 0, len(labels)+1)
-	var b bytes.Buffer
-	var metricRate interface{}
-	// hash the key of str: metric + dimension key/value pairs (sorted alpha)
-	keys = append(keys, name)
-	for k := range labels {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-
-	for _, k := range keys {
-		if v, ok := labels[k]; ok {
-			b.WriteString(k)
-			b.WriteString(v)
-		} else {
-			b.WriteString(k)
-		}
-	}
-
-	h := sha1.New()
-	h.Write(b.Bytes())
-	bs := h.Sum(nil)
-	hashStr := string(bs)
-
-	// get previous Metric content from map. Need to lock the map until set the new state
-	currentState.Lock()
-	if state, ok := currentState.Get(hashStr); ok {
-		prevStats := state.(*rateState)
-		deltaTime := timestamp - prevStats.timestamp
-		var deltaVal interface{}
-
-		if _, ok := val.(float64); ok {
-			if _, ok := prevStats.value.(int64); ok {
-				deltaVal = val.(float64) - float64(prevStats.value.(int64))
-			} else {
-				deltaVal = val.(float64) - prevStats.value.(float64)
-			}
-			if deltaTime > MinTimeDiff.Milliseconds() && deltaVal.(float64) >= 0 {
-				metricRate = deltaVal.(float64) * 1e3 / float64(deltaTime)
-			}
-		} else {
-			if _, ok := prevStats.value.(float64); ok {
-				deltaVal = val.(int64) - int64(prevStats.value.(float64))
-			} else {
-				deltaVal = val.(int64) - prevStats.value.(int64)
-			}
-			if deltaTime > MinTimeDiff.Milliseconds() && deltaVal.(int64) >= 0 {
-				metricRate = deltaVal.(int64) * 1e3 / deltaTime
-			}
-		}
-	}
-	content := &rateState{
-		value:     val,
-		timestamp: timestamp,
-	}
-	currentState.Set(hashStr, content)
-	currentState.Unlock()
-	if metricRate == nil {
-		metricRate = 0
-	}
-	return metricRate
-}
-
-// dimensionRollup creates rolled-up dimensions from the metric's label set.
-func dimensionRollup(dimensionRollupOption string, originalDimensionSlice []string, instrumentationLibName string) [][]string {
-	var rollupDimensionArray [][]string
-	dimensionZero := []string{}
-	if instrumentationLibName != noInstrumentationLibraryName {
-		dimensionZero = append(dimensionZero, OTellibDimensionKey)
-	}
-	if dimensionRollupOption == ZeroAndSingleDimensionRollup {
-		//"Zero" dimension rollup
-		if len(originalDimensionSlice) > 0 {
-			rollupDimensionArray = append(rollupDimensionArray, dimensionZero)
-		}
-	}
-	if dimensionRollupOption == ZeroAndSingleDimensionRollup || dimensionRollupOption == SingleDimensionRollupOnly {
-		//"One" dimension rollup
-		for _, dimensionKey := range originalDimensionSlice {
-			rollupDimensionArray = append(rollupDimensionArray, append(dimensionZero, dimensionKey))
-		}
-	}
-
-	return rollupDimensionArray
-}
-
-func needsCalculateRate(pmd *pdata.Metric) bool {
-	switch pmd.DataType() {
-	case pdata.MetricDataTypeIntSum:
-		if !pmd.IntSum().IsNil() && pmd.IntSum().AggregationTemporality() == pdata.AggregationTemporalityCumulative {
-			return true
-		}
-	case pdata.MetricDataTypeDoubleSum:
-		if !pmd.DoubleSum().IsNil() && pmd.DoubleSum().AggregationTemporality() == pdata.AggregationTemporalityCumulative {
-			return true
-		}
-	}
-	return false
 }
