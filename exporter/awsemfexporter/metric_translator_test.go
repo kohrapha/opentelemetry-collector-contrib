@@ -1565,3 +1565,29 @@ func BenchmarkDimensionRollup(b *testing.B) {
 		dimensionRollup(ZeroAndSingleDimensionRollup, dimensions, "cloudwatch-otel")
 	}
 }
+
+func BenchmarkGetGroupedMetricKey(b *testing.B) {
+	namespace := "testNamespace"
+	timestamp := time.Now().UnixNano() / int64(time.Millisecond)
+	labels := map[string]string {
+		"OTelLib": "cloudwatch-lib",
+		"isItAnError": "false",
+		"spanName": "testSpan",
+	}
+	for n := 0; n < b.N; n++ {
+		getGroupedMetricKey(namespace, timestamp, labels)
+	}
+}
+
+func BenchmarkGetHashedKey(b *testing.B) {
+	namespace := "testNamespace"
+	timestamp := time.Now().UnixNano() / int64(time.Millisecond)
+	labels := map[string]string {
+		"OTelLib": "cloudwatch-lib",
+		"isItAnError": "false",
+		"spanName": "testSpan",
+	}
+	for n := 0; n < b.N; n++ {
+		getHashedKey(namespace, timestamp, labels)
+	}
+}

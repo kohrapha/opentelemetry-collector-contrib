@@ -286,6 +286,36 @@ func getGroupedMetricKey(cwNamespace string, timestamp int64, labels map[string]
 	return key
 }
 
+// getGroupedMetricKey generates a key for a given GroupedMetric
+func getHashedKey(cwNamespace string, timestamp int64, labels map[string]string) (string) {
+	var b bytes.Buffer
+	keySlice := make([]string, 0, len(labels) + 2)
+	fields := make(map[string]string)
+	fields[namespaceKey] = cwNamespace
+	fields[timestampKey] = strconv.FormatInt(timestamp, 10)
+	keySlice = append(keySlice, namespaceKey, timestampKey)
+
+	for k, v := range labels {
+		fields[k] = v
+		keySlice = append(keySlice, k)
+	}
+
+	sort.Strings(keySlice)
+
+	for i, j := range keySlice {
+		keyValuePair := j + ":" + fields[j]
+		b.WriteString(keyValuePair)
+		if i != len(keySlice)-1 {
+			b.WriteString(",")
+		}
+	}
+	h := sha1.New()
+	h.Write(b.Bytes())
+	bs := h.Sum(nil)
+	key := string(bs)
+	return key
+}
+
 // buildGroupedMetric builds GroupedMetric from Datapoint and pdata.Metric
 func buildGroupedMetric (dp DataPoint, namespace string, timestamp int64, labels map[string]string, pMetricData *pdata.Metric, dimensionRollupOption string) (*GroupedMetric) {
 	metrics := make(map[string]*MetricInfo)
