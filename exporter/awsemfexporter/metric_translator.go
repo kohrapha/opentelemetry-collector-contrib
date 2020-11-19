@@ -251,7 +251,7 @@ func getGroupedMetrics(metric *pdata.Metric, namespace string, instrumentationLi
 		key := getGroupedMetricKey(namespace, timestamp, labels)
 
 		if _, ok := groupedMetricMap[key]; ok {
-			updateGroupedMetric(dp, metric, key, groupedMetricMap, config)
+			updateGroupedMetric(dp, timestamp, labels, metric, key, groupedMetricMap, config)
 		} else {
 			groupedMetric := buildGroupedMetric(dp, namespace, timestamp, labels, metric, config.DimensionRollupOption)
 			if groupedMetric != nil {
@@ -265,6 +265,7 @@ func getGroupedMetrics(metric *pdata.Metric, namespace string, instrumentationLi
 
 // getGroupedMetricKey generates a key for a given GroupedMetric
 func getGroupedMetricKey(cwNamespace string, timestamp int64, labels map[string]string) (string) {
+	var sb strings.Builder
 	keySlice := make([]string, 0, len(labels) + 2)
 	fields := make(map[string]string)
 	fields[namespaceKey] = cwNamespace
@@ -277,13 +278,16 @@ func getGroupedMetricKey(cwNamespace string, timestamp int64, labels map[string]
 	}
 
 	sort.Strings(keySlice)
-	fieldsSlice := make([]string, 0, len(keySlice))
-	for _, v := range keySlice {
-		keyValuePair := v + ":" + fields[v]
-		fieldsSlice = append(fieldsSlice, keyValuePair)
+	keySliceLen := len(keySlice)
+
+	for i, j := range keySlice {
+		keyValuePair := j + ":" + fields[j]
+		sb.WriteString(keyValuePair)
+		if i < keySliceLen-1 {
+			sb.WriteString(",")
+		}
 	}
-	key := strings.Join(fieldsSlice, ",")
-	return key
+	return sb.String()
 }
 
 // buildGroupedMetric builds GroupedMetric from Datapoint and pdata.Metric
@@ -331,7 +335,7 @@ func buildGroupedMetric (dp DataPoint, namespace string, timestamp int64, labels
 }
 
 // updateGroupedMetric adds new metric to existing GroupedMetric from datapoint
-func updateGroupedMetric (dp DataPoint, pMetricData *pdata.Metric, key string, groupedMetricMap map[string]*GroupedMetric, config *Config) {
+func updateGroupedMetric (dp DataPoint, timestamp int64, labels map[string]string, pMetricData *pdata.Metric, key string, groupedMetricMap map[string]*GroupedMetric, config *Config) {
 	metricsMap := make(map[string]*MetricInfo)
 	metricName := pMetricData.Name()
 
