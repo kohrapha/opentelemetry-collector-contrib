@@ -375,110 +375,6 @@ func updateGroupedMetric (dp DataPoint, pMetricData *pdata.Metric, key string, g
 	}
 }
 
-// rate is calculated by valDelta / timeDelta
-func calculateRate(labels map[string]string, name string, val interface{}, timestamp int64) interface{} {
-	keys := make([]string, 0, len(labels)+1)
-	var b bytes.Buffer
-	var metricRate interface{}
-
-	keys = append(keys, name)
-	for k := range labels {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-
-	for _, k := range keys {
-		if v, ok := labels[k]; ok {
-			// labels
-			b.WriteString(k)
-			b.WriteString(v)
-		} else {
-			// metric
-			b.WriteString(k)
-		}
-	}
-	// hash the key of str: metric + dimension key/value pairs (sorted alpha)
-	h := sha1.New()
-	h.Write(b.Bytes())
-	bs := h.Sum(nil)
-	hashStr := string(bs)
-
-	// get previous Metric content from map. Need to lock the map until set the new state
-	currentState.Lock()
-	if state, ok := currentState.Get(hashStr); ok {
-		prevStats := state.(*rateState)
-		deltaTime := timestamp - prevStats.timestamp
-		var deltaVal interface{}
-
-		if _, ok := val.(float64); ok {
-			if _, ok := prevStats.value.(int64); ok {
-				deltaVal = val.(float64) - float64(prevStats.value.(int64))
-			} else {
-				deltaVal = val.(float64) - prevStats.value.(float64)
-			}
-			if deltaTime > MinTimeDiff.Milliseconds() && deltaVal.(float64) >= 0 {
-				metricRate = deltaVal.(float64) * 1e3 / float64(deltaTime)
-			}
-		} else {
-			if _, ok := prevStats.value.(float64); ok {
-				deltaVal = val.(int64) - int64(prevStats.value.(float64))
-			} else {
-				deltaVal = val.(int64) - prevStats.value.(int64)
-			}
-			if deltaTime > MinTimeDiff.Milliseconds() && deltaVal.(int64) >= 0 {
-				metricRate = deltaVal.(int64) * 1e3 / deltaTime
-			}
-		}
-	}
-	content := &rateState{
-		value:     val,
-		timestamp: timestamp,
-	}
-	currentState.Set(hashStr, content)
-	currentState.Unlock()
-	if metricRate == nil {
-		metricRate = 0
-	}
-	return metricRate
-}
-
-// dimensionRollup creates rolled-up dimensions from the metric's label set.
-func dimensionRollup(dimensionRollupOption string, originalDimensionSlice []string, instrumentationLibName string) [][]string {
-	var rollupDimensionArray [][]string
-	dimensionZero := []string{}
-	if instrumentationLibName != noInstrumentationLibraryName {
-		dimensionZero = append(dimensionZero, OTellibDimensionKey)
-	}
-	if dimensionRollupOption == ZeroAndSingleDimensionRollup {
-		//"Zero" dimension rollup
-		if len(originalDimensionSlice) > 0 {
-			rollupDimensionArray = append(rollupDimensionArray, dimensionZero)
-		}
-	}
-	if dimensionRollupOption == ZeroAndSingleDimensionRollup || dimensionRollupOption == SingleDimensionRollupOnly {
-		//"One" dimension rollup
-		for _, dimensionKey := range originalDimensionSlice {
-			rollupDimensionArray = append(rollupDimensionArray, append(dimensionZero, dimensionKey))
-		}
-	}
-
-	return rollupDimensionArray
-}
-
-func needsCalculateRate(pmd *pdata.Metric) bool {
-	switch pmd.DataType() {
-	case pdata.MetricDataTypeIntSum:
-		if !pmd.IntSum().IsNil() && pmd.IntSum().AggregationTemporality() == pdata.AggregationTemporalityCumulative {
-			return true
-		}
-	case pdata.MetricDataTypeDoubleSum:
-		if !pmd.DoubleSum().IsNil() && pmd.DoubleSum().AggregationTemporality() == pdata.AggregationTemporalityCumulative {
-			return true
-		}
-	}
-	return false
-}
-
 // TranslateOtToCWMetric converts OT metrics to CloudWatch Metric format
 func TranslateOtToCWMetric(rm *pdata.ResourceMetrics, config *Config) ([]*CWMetrics, int) {
 	var cwMetricList []*CWMetrics
@@ -717,4 +613,108 @@ func buildCWMetric(dp DataPoint, pmd *pdata.Metric, namespace string, metricSlic
 		Fields:       fields,
 	}
 	return cwMetric
+}
+
+// rate is calculated by valDelta / timeDelta
+func calculateRate(labels map[string]string, name string, val interface{}, timestamp int64) interface{} {
+	keys := make([]string, 0, len(labels)+1)
+	var b bytes.Buffer
+	var metricRate interface{}
+
+	keys = append(keys, name)
+	for k := range labels {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	for _, k := range keys {
+		if v, ok := labels[k]; ok {
+			// labels
+			b.WriteString(k)
+			b.WriteString(v)
+		} else {
+			// metric
+			b.WriteString(k)
+		}
+	}
+	// hash the key of str: metric + dimension key/value pairs (sorted alpha)
+	h := sha1.New()
+	h.Write(b.Bytes())
+	bs := h.Sum(nil)
+	hashStr := string(bs)
+
+	// get previous Metric content from map. Need to lock the map until set the new state
+	currentState.Lock()
+	if state, ok := currentState.Get(hashStr); ok {
+		prevStats := state.(*rateState)
+		deltaTime := timestamp - prevStats.timestamp
+		var deltaVal interface{}
+
+		if _, ok := val.(float64); ok {
+			if _, ok := prevStats.value.(int64); ok {
+				deltaVal = val.(float64) - float64(prevStats.value.(int64))
+			} else {
+				deltaVal = val.(float64) - prevStats.value.(float64)
+			}
+			if deltaTime > MinTimeDiff.Milliseconds() && deltaVal.(float64) >= 0 {
+				metricRate = deltaVal.(float64) * 1e3 / float64(deltaTime)
+			}
+		} else {
+			if _, ok := prevStats.value.(float64); ok {
+				deltaVal = val.(int64) - int64(prevStats.value.(float64))
+			} else {
+				deltaVal = val.(int64) - prevStats.value.(int64)
+			}
+			if deltaTime > MinTimeDiff.Milliseconds() && deltaVal.(int64) >= 0 {
+				metricRate = deltaVal.(int64) * 1e3 / deltaTime
+			}
+		}
+	}
+	content := &rateState{
+		value:     val,
+		timestamp: timestamp,
+	}
+	currentState.Set(hashStr, content)
+	currentState.Unlock()
+	if metricRate == nil {
+		metricRate = 0
+	}
+	return metricRate
+}
+
+// dimensionRollup creates rolled-up dimensions from the metric's label set.
+func dimensionRollup(dimensionRollupOption string, originalDimensionSlice []string, instrumentationLibName string) [][]string {
+	var rollupDimensionArray [][]string
+	dimensionZero := []string{}
+	if instrumentationLibName != noInstrumentationLibraryName {
+		dimensionZero = append(dimensionZero, OTellibDimensionKey)
+	}
+	if dimensionRollupOption == ZeroAndSingleDimensionRollup {
+		//"Zero" dimension rollup
+		if len(originalDimensionSlice) > 0 {
+			rollupDimensionArray = append(rollupDimensionArray, dimensionZero)
+		}
+	}
+	if dimensionRollupOption == ZeroAndSingleDimensionRollup || dimensionRollupOption == SingleDimensionRollupOnly {
+		//"One" dimension rollup
+		for _, dimensionKey := range originalDimensionSlice {
+			rollupDimensionArray = append(rollupDimensionArray, append(dimensionZero, dimensionKey))
+		}
+	}
+
+	return rollupDimensionArray
+}
+
+func needsCalculateRate(pmd *pdata.Metric) bool {
+	switch pmd.DataType() {
+	case pdata.MetricDataTypeIntSum:
+		if !pmd.IntSum().IsNil() && pmd.IntSum().AggregationTemporality() == pdata.AggregationTemporalityCumulative {
+			return true
+		}
+	case pdata.MetricDataTypeDoubleSum:
+		if !pmd.DoubleSum().IsNil() && pmd.DoubleSum().AggregationTemporality() == pdata.AggregationTemporalityCumulative {
+			return true
+		}
+	}
+	return false
 }
