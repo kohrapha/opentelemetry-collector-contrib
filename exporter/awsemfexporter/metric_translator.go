@@ -265,6 +265,7 @@ func getGroupedMetrics(metric *pdata.Metric, namespace string, instrumentationLi
 
 // getGroupedMetricKey generates a key for a given GroupedMetric
 func getGroupedMetricKey(cwNamespace string, timestamp int64, labels map[string]string) (string) {
+	var sb strings.Builder
 	keySlice := make([]string, 0, len(labels) + 2)
 	fields := make(map[string]string)
 	fields[namespaceKey] = cwNamespace
@@ -277,13 +278,16 @@ func getGroupedMetricKey(cwNamespace string, timestamp int64, labels map[string]
 	}
 
 	sort.Strings(keySlice)
-	fieldsSlice := make([]string, 0, len(keySlice))
-	for _, v := range keySlice {
-		keyValuePair := v + ":" + fields[v]
-		fieldsSlice = append(fieldsSlice, keyValuePair)
+	keySliceLen := len(keySlice)
+
+	for i, j := range keySlice {
+		keyValuePair := j + ":" + fields[j]
+		sb.WriteString(keyValuePair)
+		if i < keySliceLen-1 {
+			sb.WriteString(",")
+		}
 	}
-	key := strings.Join(fieldsSlice, ",")
-	return key
+	return sb.String()
 }
 
 // getGroupedMetricKey generates a key for a given GroupedMetric
@@ -305,7 +309,7 @@ func getHashedKey(cwNamespace string, timestamp int64, labels map[string]string)
 	for i, j := range keySlice {
 		keyValuePair := j + ":" + fields[j]
 		b.WriteString(keyValuePair)
-		if i != len(keySlice)-1 {
+		if i < len(keySlice)-1 {
 			b.WriteString(",")
 		}
 	}
