@@ -295,30 +295,11 @@ func buildGroupedMetric (dp DataPoint, namespace string, timestamp int64, labels
 	metrics := make(map[string]*MetricInfo)
 
 	// Extract metric
-	var metricVal interface{}
-	switch metric := dp.(type) {
-	case pdata.IntDataPoint:
-		metricVal = int64(metric.Value())
-		if needsCalculateRate(pMetricData) {
-			metricVal = calculateRate(labels, pMetricData.Name(), metric.Value(), timestamp)
-		}
-	case pdata.DoubleDataPoint:
-		metricVal = float64(metric.Value())
-		if needsCalculateRate(pMetricData) {
-			metricVal = calculateRate(labels, pMetricData.Name(), metric.Value(), timestamp)
-		}
-	case pdata.DoubleHistogramDataPoint:
-		bucketBounds := metric.ExplicitBounds()
-		metricVal = &CWMetricStats{
-			Min:   bucketBounds[0],
-			Max:   bucketBounds[len(bucketBounds)-1],
-			Count: metric.Count(),
-			Sum:   metric.Sum(),
-		}
-	}
+	metricVal := calculateMetricValue(dp, timestamp, labels, pMetricData)
 	if metricVal == nil {
 		return nil
 	}
+
 	metricInfo := MetricInfo {
 		Value: metricVal,
 		Unit:  pMetricData.Unit(),
@@ -340,7 +321,26 @@ func updateGroupedMetric (dp DataPoint, timestamp int64, labels map[string]strin
 	metricName := pMetricData.Name()
 
 	// Extract metric
-	var metricVal interface{}
+	metricVal := calculateMetricValue(dp, timestamp, labels, pMetricData)
+	if metricVal == nil {
+		return
+	}
+
+	metricInfo := MetricInfo {
+		Value: metricVal,
+		Unit:  pMetricData.Unit(),
+	}
+
+	metricsMap = groupedMetricMap[key].Metrics 
+	// if metricName already exists in metrics map, print warning log
+	if _, ok := metricsMap[metricName]; ok {
+		config.logger.Warn("Metric already exists in groupedMetrics", zap.String("Name", pMetricData.Name()))
+	} else {
+		groupedMetricMap[key].Metrics[metricName] = &metricInfo
+	}
+}
+
+func calculateMetricValue (dp DataPoint, timestamp int64, labels map[string]string, pMetricData *pdata.Metric) (metricVal interface{}) {
 	switch metric := dp.(type) {
 	case pdata.IntDataPoint:
 		metricVal = int64(metric.Value())
@@ -360,27 +360,11 @@ func updateGroupedMetric (dp DataPoint, timestamp int64, labels map[string]strin
 			Count: metric.Count(),
 			Sum:   metric.Sum(),
 		}
-	}
-
-	if metricVal == nil {
+	default: 
+		metricVal = nil
 		return
 	}
-	metricInfo := MetricInfo {
-		Value: metricVal,
-		Unit:  pMetricData.Unit(),
-	}
-
-	metricsMap = groupedMetricMap[key].Metrics 
-	// if metricName already exists in metrics map, print warning log
-	// otherwise add to map
-	if _, ok := metricsMap[metricName]; ok {
-		config.logger.Warn("Cannot override metric.",
-				zap.String("DataType", pMetricData.DataType().String()),
-				zap.String("Name", pMetricData.Name()),
-				zap.String("Unit", pMetricData.Unit()),)
-	} else {
-		groupedMetricMap[key].Metrics[metricName] = &metricInfo
-	}
+	return 
 }
 
 // TranslateOtToCWMetric converts OT metrics to CloudWatch Metric format
@@ -596,11 +580,17 @@ func buildCWMetric(dp DataPoint, pmd *pdata.Metric, namespace string, metricSlic
 		// since calculateRate() needs metric name as one of metric identifiers
 		fields[pmd.Name()] = int64(FakeMetricValue)
 		metricVal = metric.Value()
+		if needsCalculateRate(pmd) {
+			metricVal = calculateRate(labels, namespace, metric.Value(), timestamp)
+		}
 	case pdata.DoubleDataPoint:
 		// Put a fake but identical metric value here in order to add metric name into fields
 		// since calculateRate() needs metric name as one of metric identifiers
 		fields[pmd.Name()] = float64(FakeMetricValue)
 		metricVal = metric.Value()
+		if needsCalculateRate(pmd) {
+			metricVal = calculateRate(labels, namespace, metric.Value(), timestamp)
+		}
 	case pdata.DoubleHistogramDataPoint:
 		bucketBounds := metric.ExplicitBounds()
 		metricVal = &CWMetricStats{
