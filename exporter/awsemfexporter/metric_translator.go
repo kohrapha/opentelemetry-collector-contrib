@@ -40,7 +40,7 @@ const (
 	defaultNameSpace             = "default"
 	noInstrumentationLibraryName = "Undefined"
 	namespaceKey                 = "CloudWatchNamespace"
-	timestampKey				 = "CloudWatchTimestamp"
+	timestampKey		     = "CloudWatchTimestamp"
 
 	// See: http://docs.aws.amazon.com/AmazonCloudWatchLogs/latest/APIReference/API_PutLogEvents.html
 	maximumLogEventsPerPut = 10000
