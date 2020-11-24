@@ -250,14 +250,10 @@ func getGroupedMetrics(metric *pdata.Metric, namespace string, instrumentationLi
 
 		key := getGroupedMetricKey(namespace, timestamp, labels)
 
-		if _, ok := groupedMetricMap[key]; ok {
-			updateGroupedMetric(dp, timestamp, labels, metric, key, groupedMetricMap, config)
-		} else {
-			groupedMetric := buildGroupedMetric(dp, namespace, timestamp, labels, metric, config.DimensionRollupOption)
-			if groupedMetric != nil {
-				groupedMetricMap[key] = groupedMetric
-				groupedMetrics = append(groupedMetrics,groupedMetric)
-			}
+		groupedMetric := buildGroupedMetric(dp, namespace, timestamp, labels, metric, key, groupedMetricMap, config)
+
+		if groupedMetric != nil {
+			groupedMetrics = append(groupedMetrics, groupedMetric)
 		}
 	}
 	return
@@ -291,53 +287,57 @@ func getGroupedMetricKey(cwNamespace string, timestamp int64, labels map[string]
 }
 
 // buildGroupedMetric builds GroupedMetric from Datapoint and pdata.Metric
-func buildGroupedMetric (dp DataPoint, namespace string, timestamp int64, labels map[string]string, pMetricData *pdata.Metric, dimensionRollupOption string) (*GroupedMetric) {
+func buildGroupedMetric (dp DataPoint, namespace string, timestamp int64, labels map[string]string, pMetricData *pdata.Metric, key string, groupedMetricMap map[string]*GroupedMetric, config *Config) (groupedMetric *GroupedMetric) {
 	metrics := make(map[string]*MetricInfo)
 
-	// Extract metric
-	metricVal := calculateMetricValue(dp, timestamp, labels, pMetricData)
-	if metricVal == nil {
-		return nil
-	}
+	if _, ok := groupedMetricMap[key]; ok {
+		metricsMap := make(map[string]*MetricInfo)
+		metricName := pMetricData.Name()
 
-	metricInfo := MetricInfo {
-		Value: metricVal,
-		Unit:  pMetricData.Unit(),
-	}
+		// Extract metric and update existing groupedMetricMap
+		metricVal := calculateMetricValue(dp, timestamp, labels, pMetricData)
+		if metricVal == nil {
+			return nil
+		}
 
-	metrics[pMetricData.Name()] = &metricInfo
-	groupedMetric := &GroupedMetric {
-		Namespace: namespace,
-		Timestamp: timestamp,
-		Labels:    labels,
-		Metrics:   metrics,
-	}
-	return groupedMetric
-}
+		metricInfo := MetricInfo {
+			Value: metricVal,
+			Unit:  pMetricData.Unit(),
+		}
 
-// updateGroupedMetric adds new metric to existing GroupedMetric from datapoint
-func updateGroupedMetric (dp DataPoint, timestamp int64, labels map[string]string, pMetricData *pdata.Metric, key string, groupedMetricMap map[string]*GroupedMetric, config *Config) {
-	metricsMap := make(map[string]*MetricInfo)
-	metricName := pMetricData.Name()
-
-	// Extract metric
-	metricVal := calculateMetricValue(dp, timestamp, labels, pMetricData)
-	if metricVal == nil {
-		return
-	}
-
-	metricInfo := MetricInfo {
-		Value: metricVal,
-		Unit:  pMetricData.Unit(),
-	}
-
-	metricsMap = groupedMetricMap[key].Metrics 
-	// if metricName already exists in metrics map, print warning log
-	if _, ok := metricsMap[metricName]; ok {
-		config.logger.Warn("Metric already exists in groupedMetrics", zap.String("Name", pMetricData.Name()))
+		metricsMap = groupedMetricMap[key].Metrics 
+		// if metricName already exists in metrics map, print warning log
+		if _, ok := metricsMap[metricName]; ok {
+			config.logger.Warn("Metric already exists in groupedMetrics", zap.String("Name", pMetricData.Name()))
+		} else {
+			groupedMetricMap[key].Metrics[metricName] = &metricInfo
+			return nil
+		}
 	} else {
-		groupedMetricMap[key].Metrics[metricName] = &metricInfo
+		// Extract metric and create new GroupedMetric
+		metricVal := calculateMetricValue(dp, timestamp, labels, pMetricData)
+		if metricVal == nil {
+			return nil
+		}
+
+		metricInfo := MetricInfo {
+			Value: metricVal,
+			Unit:  pMetricData.Unit(),
+		}
+
+		metrics[pMetricData.Name()] = &metricInfo
+		groupedMetric := &GroupedMetric {
+			Namespace: namespace,
+			Timestamp: timestamp,
+			Labels:    labels,
+			Metrics:   metrics,
+		}
+		if groupedMetric != nil {
+			groupedMetricMap[key] = groupedMetric
+		}
+		return groupedMetric
 	}
+	return
 }
 
 func calculateMetricValue (dp DataPoint, timestamp int64, labels map[string]string, pMetricData *pdata.Metric) (metricVal interface{}) {

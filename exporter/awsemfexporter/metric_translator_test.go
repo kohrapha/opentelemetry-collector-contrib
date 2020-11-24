@@ -726,6 +726,10 @@ func TestBuildGroupedMetric(t *testing.T) {
 	metric := pdata.NewMetric()
 	metric.InitEmpty()
 	metric.SetName("foo")
+	config := &Config{
+		Namespace:             "",
+		DimensionRollupOption: ZeroAndSingleDimensionRollup,
+	}
 
 	t.Run("Int gauge", func(t *testing.T) {
 		metric.SetDataType(pdata.MetricDataTypeIntGauge)
@@ -741,7 +745,9 @@ func TestBuildGroupedMetric(t *testing.T) {
 			"label1": "value1",
 		}
 
-		groupedMetric := buildGroupedMetric(dp, namespace, timestamp, labels, &metric, "")
+		groupedMetricMap := make(map[string]*GroupedMetric)
+		key := getGroupedMetricKey(namespace, timestamp, labels)
+		groupedMetric := buildGroupedMetric(dp, namespace, timestamp, labels, &metric, key, groupedMetricMap, config)
 		assert.NotNil(t, groupedMetric)
 		assert.Equal(t, 2, len(groupedMetric.Labels))
 		assert.Equal(t, 1, len(groupedMetric.Metrics))
@@ -774,7 +780,9 @@ func TestBuildGroupedMetric(t *testing.T) {
 			"label1": "value1",
 		}
 
-		groupedMetric := buildGroupedMetric(dp, namespace, timestamp, labels, &metric, "")
+		groupedMetricMap := make(map[string]*GroupedMetric)
+		key := getGroupedMetricKey(namespace, timestamp, labels)
+		groupedMetric := buildGroupedMetric(dp, namespace, timestamp, labels, &metric, key, groupedMetricMap, config)
 
 		assert.NotNil(t, groupedMetric)
 		assert.Equal(t, 2, len(groupedMetric.Labels))
@@ -810,7 +818,9 @@ func TestBuildGroupedMetric(t *testing.T) {
 			"label1": "value1",
 		}
 
-		groupedMetric := buildGroupedMetric(dp, namespace, timestamp, labels, &metric, "")
+		groupedMetricMap := make(map[string]*GroupedMetric)
+		key := getGroupedMetricKey(namespace, timestamp, labels)
+		groupedMetric := buildGroupedMetric(dp, namespace, timestamp, labels, &metric, key, groupedMetricMap, config)
 
 		assert.NotNil(t, groupedMetric)
 		assert.Equal(t, 2, len(groupedMetric.Labels))
@@ -846,7 +856,9 @@ func TestBuildGroupedMetric(t *testing.T) {
 			"label1": "value1",
 		}
 
-		groupedMetric := buildGroupedMetric(dp, namespace, timestamp, labels, &metric, "")
+		groupedMetricMap := make(map[string]*GroupedMetric)
+		key := getGroupedMetricKey(namespace, timestamp, labels)
+		groupedMetric := buildGroupedMetric(dp, namespace, timestamp, labels, &metric, key, groupedMetricMap, config)
 
 		assert.NotNil(t, groupedMetric)
 		assert.Equal(t, 2, len(groupedMetric.Labels))
@@ -883,7 +895,9 @@ func TestBuildGroupedMetric(t *testing.T) {
 			"label1": "value1",
 		}
 
-		groupedMetric := buildGroupedMetric(dp, namespace, timestamp, labels, &metric, "")
+		groupedMetricMap := make(map[string]*GroupedMetric)
+		key := getGroupedMetricKey(namespace, timestamp, labels)
+		groupedMetric := buildGroupedMetric(dp, namespace, timestamp, labels, &metric, key, groupedMetricMap, config)
 
 		assert.NotNil(t, groupedMetric)
 		assert.Equal(t, 2, len(groupedMetric.Labels))
@@ -918,7 +932,9 @@ func TestBuildGroupedMetric(t *testing.T) {
 			"label1": "value1",
 		}
 
-		groupedMetric := buildGroupedMetric(dp, namespace, timestamp, labels, &metric, "")
+		groupedMetricMap := make(map[string]*GroupedMetric)
+		key := getGroupedMetricKey(namespace, timestamp, labels)
+		groupedMetric := buildGroupedMetric(dp, namespace, timestamp, labels, &metric, key, groupedMetricMap, config)
 		assert.Nil(t, groupedMetric)
 	})
 }
@@ -981,6 +997,7 @@ func TestUpdateGroupedMetric(t *testing.T) {
 	timestamp := time.Now().UnixNano() / int64(time.Millisecond)
 	instrLibName := "fooLibName"
 	OTellibDimensionKey := "fooOTelLib"
+	namespace := "fooNamespace"
 
 	metric := pdata.NewMetric()
 	metric.InitEmpty()
@@ -996,7 +1013,7 @@ func TestUpdateGroupedMetric(t *testing.T) {
 		"isItAnError": "true",
 	}
 
-	updateGroupedMetric(dp, timestamp, labels, &metric, key, groupedMetricMap,config)
+	buildGroupedMetric(dp, namespace, timestamp, labels, &metric, key, groupedMetricMap, config)
 
 	assert.NotNil(t, groupedMetricMap)
 	assert.Equal(t, 1, len(groupedMetricMap))
