@@ -106,10 +106,11 @@ type DataPoints interface {
 }
 
 // DataPoint is a wrapper interface for:
-// 	- pdata.IntDataPoint
-// 	- pdata.DoubleDataPoint
-// 	- pdata.IntHistogramDataPoint
-// 	- pdata.DoubleHistogramDataPoint
+//  - pdata.IntDataPoint
+//  - pdata.DoubleDataPoint
+//  - pdata.IntHistogramDataPoint
+//  - pdata.DoubleHistogramDataPoint
+//  - pdata.DoubleSummaryDataPointSlice
 type DataPoint interface {
 	IsNil() bool
 	LabelsMap() pdata.StringMap
@@ -125,6 +126,9 @@ type DoubleDataPointSlice struct {
 type DoubleHistogramDataPointSlice struct {
 	pdata.DoubleHistogramDataPointSlice
 }
+type DoubleSummaryDataPointSlice struct {
+	pdata.DoubleSummaryDataPointSlice
+}
 
 func (dps IntDataPointSlice) At(i int) DataPoint {
 	return dps.IntDataPointSlice.At(i)
@@ -134,6 +138,9 @@ func (dps DoubleDataPointSlice) At(i int) DataPoint {
 }
 func (dps DoubleHistogramDataPointSlice) At(i int) DataPoint {
 	return dps.DoubleHistogramDataPointSlice.At(i)
+}
+func (dps DoubleSummaryDataPointSlice) At(i int) DataPoint {
+	return dps.DoubleSummaryDataPointSlice.At(i)
 }
 
 
@@ -431,7 +438,7 @@ func TranslateCWMetricToEMF(cwMetricLists []*CWMetrics, logger *zap.Logger) []*L
 			fieldMap["_aws"] = cwmMap
 		} else {
 			str, _ := json.Marshal(fieldMap)
-			logger.Warn("Dropped metric due to no matching metric declarations", zap.String("labels", string(str)))
+			logger.Debug("Dropped metric due to no matching metric declarations", zap.String("labels", string(str)))
 		}
 
 		pleMsg, err := json.Marshal(fieldMap)
@@ -476,6 +483,8 @@ func getCWMetrics(metric *pdata.Metric, namespace string, instrumentationLibName
 		dps = DoubleDataPointSlice{metric.DoubleSum().DataPoints()}
 	case pdata.MetricDataTypeDoubleHistogram:
 		dps = DoubleHistogramDataPointSlice{metric.DoubleHistogram().DataPoints()}
+	case pdata.MetricDataTypeDoubleSummary:
+		dps = DoubleSummaryDataPointSlice{metric.DoubleSummary().DataPoints()}
 	default:
 		config.logger.Warn(
 			"Unhandled metric data type.",
@@ -592,13 +601,21 @@ func buildCWMetric(dp DataPoint, pmd *pdata.Metric, namespace string, metricSlic
 			metricVal = calculateRate(labels, namespace, metric.Value(), timestamp)
 		}
 	case pdata.DoubleHistogramDataPoint:
-		bucketBounds := metric.ExplicitBounds()
 		metricVal = &CWMetricStats{
-			Min:   bucketBounds[0],
-			Max:   bucketBounds[len(bucketBounds)-1],
 			Count: metric.Count(),
 			Sum:   metric.Sum(),
 		}
+	case pdata.DoubleSummaryDataPoint:
+		metricStat := &CWMetricStats{
+			Count: metric.Count(),
+			Sum:   metric.Sum(),
+		}
+		quantileValues := metric.QuantileValues()
+		if quantileValues.Len() > 0 {
+			metricStat.Min = quantileValues.At(0).Value()
+			metricStat.Max = quantileValues.At(quantileValues.Len() - 1).Value()
+		}
+		metricVal = metricStat
 	}
 	if metricVal == nil {
 		return nil

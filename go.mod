@@ -4,11 +4,12 @@ go 1.14
 
 require (
 	github.com/client9/misspell v0.3.4
-	github.com/golangci/golangci-lint v1.32.2
+	github.com/golangci/golangci-lint v1.33.0
 	github.com/google/addlicense v0.0.0-20200906110928-a0294312aa76
 	github.com/jstemmer/go-junit-report v0.9.1
 	github.com/open-telemetry/opentelemetry-collector-contrib/exporter/alibabacloudlogserviceexporter v0.0.0-00010101000000-000000000000
 	github.com/open-telemetry/opentelemetry-collector-contrib/exporter/awsemfexporter v0.0.0-00010101000000-000000000000
+	github.com/open-telemetry/opentelemetry-collector-contrib/exporter/awsprometheusremotewriteexporter v0.0.0-00010101000000-000000000000
 	github.com/open-telemetry/opentelemetry-collector-contrib/exporter/awsxrayexporter v0.0.0-00010101000000-000000000000
 	github.com/open-telemetry/opentelemetry-collector-contrib/exporter/azuremonitorexporter v0.0.0-00010101000000-000000000000
 	github.com/open-telemetry/opentelemetry-collector-contrib/exporter/carbonexporter v0.0.0-00010101000000-000000000000
@@ -43,7 +44,6 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/jmxreceiver v0.0.0-00010101000000-000000000000
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/k8sclusterreceiver v0.0.0-00010101000000-000000000000
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/kubeletstatsreceiver v0.0.0-00010101000000-000000000000
-	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/memcachedreceiver v0.0.0-00010101000000-000000000000
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/prometheusexecreceiver v0.0.0-00010101000000-000000000000
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/receivercreator v0.0.0-00010101000000-000000000000
 	github.com/open-telemetry/opentelemetry-collector-contrib/receiver/redisreceiver v0.0.0-00010101000000-000000000000
@@ -59,8 +59,10 @@ require (
 	github.com/pavius/impi v0.0.3
 	github.com/stretchr/testify v1.6.1
 	github.com/tcnksm/ghr v0.13.0
-	go.opentelemetry.io/collector v0.14.1-0.20201112191733-c6d9a2be2223
-	golang.org/x/sys v0.0.0-20201101102859-da207088b7d1
+	go.opentelemetry.io/collector v0.15.1-0.20201120151746-8ceddba7ea03
+	go.opentelemetry.io/collector/cmd/issuegenerator v0.0.0-20201119034459-612c5ba3e7ad
+	go.opentelemetry.io/collector/cmd/mdatagen v0.0.0-20201119034459-612c5ba3e7ad
+	golang.org/x/sys v0.0.0-20201113233024-12cec1faf1ba
 	honnef.co/go/tools v0.0.1-2020.1.6
 )
 
@@ -76,6 +78,8 @@ replace github.com/open-telemetry/opentelemetry-collector-contrib/internal/k8sco
 replace github.com/open-telemetry/opentelemetry-collector-contrib/internal/awsxray => ./internal/awsxray
 
 replace github.com/open-telemetry/opentelemetry-collector-contrib/exporter/alibabacloudlogserviceexporter => ./exporter/alibabacloudlogserviceexporter
+
+replace github.com/open-telemetry/opentelemetry-collector-contrib/exporter/awsprometheusremotewriteexporter => ./exporter/awsprometheusremotewriteexporter
 
 replace github.com/open-telemetry/opentelemetry-collector-contrib/exporter/awsemfexporter => ./exporter/awsemfexporter
 
