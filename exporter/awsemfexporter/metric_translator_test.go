@@ -256,7 +256,19 @@ func assertCWMeasurementEqual(t *testing.T, expected, actual CWMeasurement) {
 	assertDimsEqual(t, expected.Dimensions, actual.Dimensions)
 }
 
-func TestGetNamespace(t *testing.T) {
+func TestNonEmptyConfigNamespace(t *testing.T) {
+	config := &Config{
+		Namespace:             "foo1",
+		DimensionRollupOption: ZeroAndSingleDimensionRollup,
+	}
+	md := createMetricTestData()
+	rms := internaldata.OCToMetrics(md)
+	rm := rms.ResourceMetrics().At(0)
+	namespace := getNamespace(&rm, config.Namespace)
+	assert.Equal(t, "foo1", namespace)
+}
+
+func TestEmptyConfigNamespace(t *testing.T) {
 	config := &Config{
 		Namespace:             "",
 		DimensionRollupOption: ZeroAndSingleDimensionRollup,
@@ -266,6 +278,42 @@ func TestGetNamespace(t *testing.T) {
 	rm := rms.ResourceMetrics().At(0)
 	namespace := getNamespace(&rm, config.Namespace)
 	assert.Equal(t, "myServiceNS/myServiceName", namespace)
+}
+
+func TestNoServiceNamespace(t *testing.T) {
+	config := &Config{
+		Namespace:             "",
+		DimensionRollupOption: ZeroAndSingleDimensionRollup,
+	}
+	md := consumerdata.MetricsData{
+		Resource: &resourcepb.Resource{
+			Labels: map[string]string{
+				conventions.AttributeServiceName:      "myServiceName",
+			},
+		},
+	}
+	rms := internaldata.OCToMetrics(md)
+	rm := rms.ResourceMetrics().At(0)
+	namespace := getNamespace(&rm, config.Namespace)
+	assert.Equal(t, "myServiceName", namespace)
+}
+
+func TestNoServiceName(t *testing.T) {
+	config := &Config{
+		Namespace:             "",
+		DimensionRollupOption: ZeroAndSingleDimensionRollup,
+	}
+	md := consumerdata.MetricsData{
+		Resource: &resourcepb.Resource{
+			Labels: map[string]string{
+				conventions.AttributeServiceNamespace:      "myServiceNS",
+			},
+		},
+	}
+	rms := internaldata.OCToMetrics(md)
+	rm := rms.ResourceMetrics().At(0)
+	namespace := getNamespace(&rm, config.Namespace)
+	assert.Equal(t, "myServiceNS", namespace)
 }
 
 // Asserts whether GroupedMetric Labels and Metrics are equal
