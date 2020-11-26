@@ -256,6 +256,66 @@ func assertCWMeasurementEqual(t *testing.T, expected, actual CWMeasurement) {
 	assertDimsEqual(t, expected.Dimensions, actual.Dimensions)
 }
 
+func TestNonEmptyConfigNamespace(t *testing.T) {
+	config := &Config{
+		Namespace:             "foo1",
+		DimensionRollupOption: ZeroAndSingleDimensionRollup,
+	}
+	md := createMetricTestData()
+	rms := internaldata.OCToMetrics(md)
+	rm := rms.ResourceMetrics().At(0)
+	namespace := getNamespace(&rm, config.Namespace)
+	assert.Equal(t, "foo1", namespace)
+}
+
+func TestEmptyConfigNamespace(t *testing.T) {
+	config := &Config{
+		Namespace:             "",
+		DimensionRollupOption: ZeroAndSingleDimensionRollup,
+	}
+	md := createMetricTestData()
+	rms := internaldata.OCToMetrics(md)
+	rm := rms.ResourceMetrics().At(0)
+	namespace := getNamespace(&rm, config.Namespace)
+	assert.Equal(t, "myServiceNS/myServiceName", namespace)
+}
+
+func TestNoServiceNamespace(t *testing.T) {
+	config := &Config{
+		Namespace:             "",
+		DimensionRollupOption: ZeroAndSingleDimensionRollup,
+	}
+	md := consumerdata.MetricsData{
+		Resource: &resourcepb.Resource{
+			Labels: map[string]string{
+				conventions.AttributeServiceName:      "myServiceName",
+			},
+		},
+	}
+	rms := internaldata.OCToMetrics(md)
+	rm := rms.ResourceMetrics().At(0)
+	namespace := getNamespace(&rm, config.Namespace)
+	assert.Equal(t, "myServiceName", namespace)
+}
+
+func TestNoServiceName(t *testing.T) {
+	config := &Config{
+		Namespace:             "",
+		DimensionRollupOption: ZeroAndSingleDimensionRollup,
+	}
+	md := consumerdata.MetricsData{
+		Resource: &resourcepb.Resource{
+			Labels: map[string]string{
+				conventions.AttributeServiceNamespace:      "myServiceNS",
+			},
+		},
+	}
+	rms := internaldata.OCToMetrics(md)
+	rm := rms.ResourceMetrics().At(0)
+	namespace := getNamespace(&rm, config.Namespace)
+	assert.Equal(t, "myServiceNS", namespace)
+}
+
 // Asserts whether GroupedMetric Labels and Metrics are equal
 func TestTranslateOtToGroupedMetric(t *testing.T) {
 	config := &Config{
@@ -1103,7 +1163,7 @@ func TestTranslateOtToCWMetricWithInstrLibrary(t *testing.T) {
 	cwm, totalDroppedMetrics := TranslateOtToCWMetric(&rm, config)
 	assert.Equal(t, 0, totalDroppedMetrics)
 	assert.NotNil(t, cwm)
-	assert.Equal(t, 6, len(cwm))
+	assert.Equal(t, 5, len(cwm))
 	assert.Equal(t, 1, len(cwm[0].Measurements))
 
 	met := cwm[0]
@@ -1139,7 +1199,7 @@ func TestTranslateOtToCWMetricWithoutInstrLibrary(t *testing.T) {
 	cwm, totalDroppedMetrics := TranslateOtToCWMetric(&rm, config)
 	assert.Equal(t, 0, totalDroppedMetrics)
 	assert.NotNil(t, cwm)
-	assert.Equal(t, 6, len(cwm))
+	assert.Equal(t, 5, len(cwm))
 	assert.Equal(t, 1, len(cwm[0].Measurements))
 
 	met := cwm[0]
@@ -1973,7 +2033,7 @@ func TestGetCWMetrics(t *testing.T) {
 					},
 				},
 				{
-					Measurements: []CwMeasurement{
+					Measurements: []CWMeasurement{
 						{
 							Namespace: namespace,
 							Dimensions: [][]string{
@@ -2088,7 +2148,7 @@ func TestGetCWMetrics(t *testing.T) {
 			},
 			[]*CWMetrics{
 				{
-					Measurements: []CwMeasurement{
+					Measurements: []CWMeasurement{
 						{
 							Namespace: namespace,
 							Dimensions: [][]string{
