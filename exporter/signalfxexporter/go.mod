@@ -8,7 +8,7 @@ require (
 	github.com/open-telemetry/opentelemetry-collector-contrib/internal/common v0.0.0-00010101000000-000000000000
 	github.com/open-telemetry/opentelemetry-collector-contrib/internal/splunk v0.0.0-00010101000000-000000000000
 	github.com/open-telemetry/opentelemetry-collector-contrib/pkg/batchperresourceattr v0.0.0-00010101000000-000000000000
-	github.com/shirou/gopsutil v3.20.11+incompatible
+	github.com/shirou/gopsutil v3.21.1+incompatible
 	github.com/signalfx/com_signalfx_metrics_protobuf v0.0.2
 	github.com/stretchr/testify v1.6.1
 	go.opentelemetry.io/collector v0.16.1-0.20201207152538-326931de8c32
