@@ -62,8 +62,8 @@ require (
 	go.opentelemetry.io/collector v0.16.1-0.20201207152538-326931de8c32
 	go.opentelemetry.io/collector/cmd/issuegenerator v0.0.0-20201201185019-f4f68db25d1f
 	go.opentelemetry.io/collector/cmd/mdatagen v0.0.0-20201201185019-f4f68db25d1f
-	golang.org/x/sys v0.0.0-20201113233024-12cec1faf1ba
-	honnef.co/go/tools v0.0.1-2020.1.6
+	golang.org/x/sys v0.0.0-20210119212857-b64e53b001e4
+	honnef.co/go/tools v0.3.0-0.dev
 )
 
 // Replace references to modules that are in this repository with their relateive paths
